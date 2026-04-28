@@ -4,7 +4,9 @@ You are preparing `brief.md` for `research_lab`.
 
 ## Goal
 
-Convert the user's rough notes into a clean markdown brief that `research-lab brief --input brief.md --output brief.json` can parse.
+Convert the user's rough notes into a clean `brief.md` that the rest of the lab can use.
+
+The Python brief converter can parse this file if needed, but that is secondary. The main goal is to give the lab agent a crisp, reusable research brief.
 
 ## Output format
 

@@ -8,14 +8,16 @@ Compare a current run against a prior run, then summarize whether the newer run 
 
 ## Workflow
 
-1. Run:
+1. If helpful, run:
 
 ```bash
 research-lab review --run <current-run-id-or-path>
 ```
 
-2. Read the generated `review.md` in that run directory.
-3. Inspect `report.md` for the current run if needed.
+2. Read the generated `review.md` if it exists.
+3. Inspect `report.md`, `candidates.json`, and other run artifacts as needed.
+
+If the comparison command is not needed, you can compare the artifacts directly.
 
 ## Review focus
 
