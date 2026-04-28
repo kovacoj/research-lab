@@ -41,8 +41,9 @@ def execute_run(
     ranked = rank_candidates(dedupe_candidates(pool), brief)
 
     for iteration in range(1, brief.iterations + 1):
-        top_titles = [candidate.title for candidate in ranked[:3]]
-        top_authors = _top_authors(ranked[:5])
+        seed_candidates = _expansion_seed_candidates(ranked, brief)
+        top_titles = [candidate.title for candidate in seed_candidates[:3]]
+        top_authors = _top_authors(seed_candidates)
         expansion_queries = build_expansion_queries(brief, top_titles, top_authors, iteration)
 
         expanded_pool: list[PaperCandidate] = []
@@ -51,7 +52,7 @@ def execute_run(
                 continue
             expanded_pool.extend(_search_all_sources(query, brief, client, warnings))
 
-        for candidate in ranked[:3]:
+        for candidate in seed_candidates[:2]:
             if candidate.source_id and candidate.source.startswith("semanticscholar"):
                 try:
                     references = fetch_semantic_scholar_references(candidate.source_id, brief.per_query, client)
@@ -130,6 +131,33 @@ def _add_query(query: QueryRecord, all_queries: list[QueryRecord], seen: set[str
 def _top_authors(candidates: list[PaperCandidate]) -> list[str]:
     counts = Counter(author for candidate in candidates for author in candidate.authors[:3] if author)
     return [author for author, _ in counts.most_common(3)]
+
+
+def _expansion_seed_candidates(ranked: list[PaperCandidate], brief: ResearchBrief) -> list[PaperCandidate]:
+    required_hits = 0
+    if brief.must_include:
+        required_hits = 1 if len(brief.must_include) <= 2 else 2
+
+    filtered = [
+        candidate
+        for candidate in ranked
+        if candidate.document_kind == "paper"
+        and candidate.score >= 0.45
+        and _must_include_hits(candidate, brief) >= required_hits
+        and not any("drift" in reason or "weak title alignment" == reason for reason in candidate.reasons)
+    ]
+    if filtered:
+        return filtered[:3]
+
+    papers = [candidate for candidate in ranked if candidate.document_kind == "paper"]
+    if papers:
+        return papers[:3]
+    return ranked[:3]
+
+
+def _must_include_hits(candidate: PaperCandidate, brief: ResearchBrief) -> int:
+    searchable_text = f"{candidate.title} {candidate.abstract} {candidate.snippet} {candidate.full_text}".lower()
+    return sum(1 for term in brief.must_include if term.lower() in searchable_text)
 
 
 def _enrich_top_candidates(

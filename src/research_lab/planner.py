@@ -25,23 +25,68 @@ STOPWORDS = {
     "it",
     "looked",
     "looking",
+    "main",
     "methods",
+    "notes",
     "of",
+    "open",
     "on",
     "or",
     "papers",
     "paper",
+    "practical",
+    "question",
     "recent",
+    "research",
+    "smoke",
+    "source",
+    "sources",
+    "strongest",
+    "support",
+    "supporting",
     "that",
     "the",
     "their",
     "this",
     "to",
     "using",
+    "view",
     "we",
     "what",
     "with",
+    "working",
     "your",
+}
+
+EXPANSION_STOPWORDS = {
+    "accelerated",
+    "analysis",
+    "approach",
+    "approaches",
+    "benchmark",
+    "benchmarks",
+    "compilation",
+    "deep",
+    "distributed",
+    "efficient",
+    "exploring",
+    "framework",
+    "frameworks",
+    "guide",
+    "holistic",
+    "inference",
+    "learning",
+    "model",
+    "models",
+    "modern",
+    "neural",
+    "novel",
+    "review",
+    "study",
+    "studies",
+    "system",
+    "systems",
+    "training",
 }
 
 
@@ -99,9 +144,13 @@ def build_expansion_queries(
     raw_queries: list[tuple[str, str]] = []
     topic_keywords = set(extract_keywords(brief.topic, limit=8))
     for title in top_titles[:3]:
-        title_keywords = [keyword for keyword in extract_keywords(title, limit=6) if keyword not in topic_keywords]
+        title_keywords = [
+            keyword
+            for keyword in extract_keywords(title, limit=6)
+            if keyword not in topic_keywords and keyword not in EXPANSION_STOPWORDS
+        ]
         if title_keywords:
-            raw_queries.append((f"{brief.topic} {' '.join(title_keywords[:3])}", "title_expansion"))
+            raw_queries.append((f"{brief.topic} {' '.join(title_keywords[:2])}", "title_expansion"))
     for author in top_authors[:2]:
         raw_queries.append((f'"{author}" {brief.topic}', "author_expansion"))
 
