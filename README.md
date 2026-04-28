@@ -1,8 +1,10 @@
 # research_lab
 
-`research_lab` is a small literature-search laboratory for autonomous research runs.
+`research_lab` is an agent-first literature-search laboratory.
 
-It takes a topic and your current notes, searches scholarly indexes plus the open web, deduplicates papers, reranks them, expands from the strongest matches, reads accessible full text when possible, and writes a reproducible run folder.
+The intended interface is an OpenCode agent working inside this repo. You give the agent a topic, your current notes, and the kind of help you need. The agent can then search scholarly indexes plus the open web, rerank results, expand from promising leads, read accessible full text, and leave behind reproducible artifacts in `runs/`.
+
+The Python code in this repo is not the product surface. It is a toolkit the agent can use when it is useful.
 
 ## Design
 
@@ -21,6 +23,33 @@ The agent does not self-edit code during a run. It only produces search artifact
 - DuckDuckGo HTML search for broad web fallback
 
 The lab still prefers structured scholarly metadata first, but it can now fall back to broader web search and read supporting web pages or PDFs for evidence.
+
+## Agent-First Workflow
+
+The normal way to use this repo is:
+
+```bash
+cd /home/cady/personal/research_lab
+opencode
+```
+
+Then give the agent a task like:
+
+```text
+Read program.md and brief.md.example. Help me create a brief for my current research question, then run a search and summarize the strongest supporting sources.
+```
+
+Or if you already have notes:
+
+```text
+Use my notes below to prepare brief.md, search for relevant papers and supporting articles, and write a report that helps strengthen my argument.
+```
+
+The agent may choose to use the Python tools in this repo, or it may work more directly with the artifacts and prompts. The repo is designed to support both.
+
+## Python Tools
+
+The Python CLI remains available as optional tooling for the agent or for you directly.
 
 ## Quick start
 
@@ -46,7 +75,7 @@ PYTHONPATH=src python3 -m research_lab run \
 
 ## Brief Workflow
 
-For terminal use, the cleanest loop is:
+For terminal use, one clean loop is:
 
 1. Write `brief.md`
 2. Convert it to structured JSON
@@ -150,5 +179,7 @@ If the LLM call fails or is not configured, the run still completes with heurist
 
 If you run OpenCode inside this repo, there are prompt files under `.opencode/agents/` for:
 
+- orchestrating the whole lab run
 - preparing `brief.md`
 - reviewing a run against a previous run
+- drilling into evidence for a specific claim or argument
