@@ -36,6 +36,8 @@ def build_parser() -> argparse.ArgumentParser:
     run_parser.add_argument("--per-query", type=int, default=8, help="Candidates to fetch per query and source")
     run_parser.add_argument("--web-per-query", type=int, default=3, help="General web results to fetch per query")
     run_parser.add_argument("--full-text-top-n", type=int, default=5, help="Top candidates to enrich with full text")
+    run_parser.add_argument("--llm-rerank-top-n", type=int, default=8, help="Top candidates to rerank with an optional LLM")
+    run_parser.add_argument("--llm-summary-top-n", type=int, default=5, help="Top candidates to include in optional LLM synthesis")
     run_parser.add_argument("--top-k", type=int, default=20, help="Number of ranked candidates to emphasize")
     run_parser.add_argument("--program-file", default="program.md", help="Human-authored search policy file")
     run_parser.add_argument("--runs-dir", default="runs", help="Directory for run artifacts")
@@ -58,6 +60,8 @@ def run_command(args: argparse.Namespace) -> None:
         per_query=max(args.per_query, 1),
         web_per_query=max(args.web_per_query, 0),
         full_text_top_n=max(args.full_text_top_n, 0),
+        llm_rerank_top_n=max(args.llm_rerank_top_n, 0),
+        llm_summary_top_n=max(args.llm_summary_top_n, 0),
         top_k=max(args.top_k, 1),
     )
 

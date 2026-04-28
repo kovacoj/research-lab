@@ -66,6 +66,8 @@ def write_run_files(run_dir: Path, artifacts: RunArtifacts) -> None:
     if artifacts.warnings:
         lines.extend(["", "## Retrieval Warnings"])
         lines.extend(f"- {warning}" for warning in artifacts.warnings[:20])
+    if artifacts.synthesis:
+        lines.extend(["", "## LLM Synthesis", artifacts.synthesis])
     lines.extend(["", "## High Confidence Matches"])
     if high_confidence:
         for candidate in high_confidence:
@@ -112,6 +114,8 @@ def _render_candidate(candidate: PaperCandidate) -> list[str]:
     lines.append(f"  - {' | '.join(meta)}")
     if candidate.reasons:
         lines.append(f"  - why: {', '.join(candidate.reasons[:4])}")
+    if candidate.llm_reasons:
+        lines.append(f"  - llm: {', '.join(candidate.llm_reasons[:3])}")
     if candidate.evidence:
         lines.append(f"  - evidence: {' | '.join(candidate.evidence[:2])}")
     summary_source = candidate.abstract or candidate.snippet or candidate.full_text

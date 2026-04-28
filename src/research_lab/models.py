@@ -16,6 +16,8 @@ class ResearchBrief:
     per_query: int = 8
     web_per_query: int = 3
     full_text_top_n: int = 5
+    llm_rerank_top_n: int = 8
+    llm_summary_top_n: int = 5
     top_k: int = 20
 
     def to_dict(self) -> dict:
@@ -53,7 +55,9 @@ class PaperCandidate:
     matched_queries: list[str] = field(default_factory=list)
     source_names: list[str] = field(default_factory=list)
     score: float = 0.0
+    llm_score: float | None = None
     reasons: list[str] = field(default_factory=list)
+    llm_reasons: list[str] = field(default_factory=list)
     evidence: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict:
@@ -70,6 +74,7 @@ class RunArtifacts:
     candidates: list[PaperCandidate]
     program_text: str
     warnings: list[str] = field(default_factory=list)
+    synthesis: str = ""
 
     @classmethod
     def create(
@@ -81,6 +86,7 @@ class RunArtifacts:
         candidates: list[PaperCandidate],
         program_text: str,
         warnings: list[str] | None = None,
+        synthesis: str = "",
     ) -> "RunArtifacts":
         return cls(
             run_id=run_id,
@@ -91,4 +97,5 @@ class RunArtifacts:
             candidates=candidates,
             program_text=program_text,
             warnings=warnings or [],
+            synthesis=synthesis,
         )
