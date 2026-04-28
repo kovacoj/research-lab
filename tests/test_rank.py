@@ -145,6 +145,64 @@ class RankTests(unittest.TestCase):
         self.assertGreaterEqual(len(evidence), 1)
         self.assertIn("prompt tuning", evidence[0].lower())
 
+    def test_rank_prefers_structured_paper_over_light_metadata_web_page(self) -> None:
+        brief = ResearchBrief(topic="mixed precision training", context="I need foundational and practical training sources.")
+        paper = PaperCandidate(
+            title="Mixed Precision Training",
+            abstract="A foundational paper about half precision training and loss scaling.",
+            url="https://example.com/paper",
+            source="openalex",
+            source_id="oa:paper",
+            authors=["A Researcher"],
+            year=2017,
+            venue="Neural Conference",
+            doi="10.1000/mixed",
+            document_kind="paper",
+            source_names=["openalex"],
+        )
+        web = PaperCandidate(
+            title="What is Mixed Precision Training?",
+            abstract="A simple explainer for mixed precision training.",
+            url="https://example.com/web",
+            source="duckduckgo",
+            source_id="web:mixed",
+            document_kind="web",
+            source_names=["duckduckgo"],
+        )
+
+        ranked = rank_candidates([web, paper], brief)
+
+        self.assertEqual(ranked[0].title, paper.title)
+
+    def test_rank_penalizes_weak_must_include_coverage(self) -> None:
+        brief = ResearchBrief(
+            topic="mixed precision arithmetic for deep learning training",
+            context="I need practical training sources.",
+            must_include=["mixed precision", "float16", "bfloat16", "loss scaling"],
+        )
+        broad = PaperCandidate(
+            title="A Hitchhiker's Guide On Distributed Training of Deep Neural Networks",
+            abstract="This survey briefly mentions mixed precision training among many distributed techniques.",
+            url="https://example.com/broad",
+            source="openalex",
+            source_id="oa:broad",
+            document_kind="paper",
+            source_names=["openalex"],
+        )
+        precise = PaperCandidate(
+            title="Mixed Precision Training",
+            abstract="We study float16, bfloat16, and loss scaling for deep learning training.",
+            url="https://example.com/precise",
+            source="openalex",
+            source_id="oa:precise",
+            document_kind="paper",
+            source_names=["openalex"],
+        )
+
+        ranked = rank_candidates([broad, precise], brief)
+
+        self.assertEqual(ranked[0].title, precise.title)
+
 
 if __name__ == "__main__":
     unittest.main()

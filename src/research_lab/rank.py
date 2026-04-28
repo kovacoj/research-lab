@@ -187,6 +187,7 @@ def score_candidate(candidate: PaperCandidate, brief: ResearchBrief) -> float:
     topic_facets = _topic_facets(brief.topic)
     searchable_text = f"{candidate.title} {candidate.abstract} {candidate.snippet} {candidate.full_text}"
     searchable_norm = normalize_title(searchable_text)
+    searchable_lower = searchable_text.lower()
     title_norm = normalize_title(candidate.title)
 
     score = 0.0
@@ -251,6 +252,14 @@ def score_candidate(candidate: PaperCandidate, brief: ResearchBrief) -> float:
         score += citation_bonus
         reasons.append(f"{candidate.citation_count} citations")
 
+    if candidate.doi:
+        score += 0.04
+        reasons.append("has doi")
+    if candidate.authors:
+        score += 0.02
+    if candidate.venue:
+        score += 0.02
+
     if candidate.year:
         current_year = datetime.now(timezone.utc).year
         age = max(0, current_year - candidate.year)
@@ -265,10 +274,14 @@ def score_candidate(candidate: PaperCandidate, brief: ResearchBrief) -> float:
         reasons.append("seen in multiple sources")
 
     if candidate.document_kind == "paper":
-        score += 0.04
+        score += 0.08
     elif candidate.document_kind == "web" and candidate.full_text:
-        score += 0.03
+        score += 0.01
         reasons.append("web page read successfully")
+
+    if candidate.document_kind == "web" and not candidate.doi and not candidate.authors and not candidate.year:
+        score -= 0.08
+        reasons.append("light metadata")
 
     if candidate.full_text:
         score += 0.03
@@ -281,13 +294,21 @@ def score_candidate(candidate: PaperCandidate, brief: ResearchBrief) -> float:
         score -= 0.08
         reasons.append("already mentioned in context")
 
-    for term in brief.must_include:
-        if term.lower() in searchable_text.lower():
-            score += 0.04
-            reasons.append(f"matches must-include '{term}'")
+    if brief.must_include:
+        include_hits = sum(1 for term in brief.must_include if term.lower() in searchable_lower)
+        include_ratio = include_hits / len(brief.must_include)
+        score += include_ratio * 0.24
+        if include_hits:
+            reasons.append(f"must-include coverage {include_hits}/{len(brief.must_include)}")
+        if len(brief.must_include) >= 3 and include_hits <= 1:
+            score -= 0.08
+            reasons.append("weak must-include coverage")
+        elif include_hits == 0:
+            score -= 0.04
+            reasons.append("misses must-include terms")
 
     for term in brief.must_exclude:
-        if term.lower() in searchable_text.lower():
+        if term.lower() in searchable_lower:
             score -= 0.2
             reasons.append(f"matches excluded term '{term}'")
 
