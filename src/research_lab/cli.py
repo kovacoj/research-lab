@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import argparse
+from pathlib import Path
 import sys
 from datetime import datetime
-from pathlib import Path
 
+from research_lab.briefs import load_brief_json, load_brief_markdown, write_brief_json
 from research_lab.engine import execute_run
 from research_lab.models import ResearchBrief
 
@@ -16,6 +17,9 @@ def main(argv: list[str] | None = None) -> None:
     if args.command == "run":
         run_command(args)
         return
+    if args.command == "brief":
+        brief_command(args)
+        return
 
     parser.print_help()
 
@@ -25,7 +29,9 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="command")
 
     run_parser = subparsers.add_parser("run", help="Run an iterative literature search")
-    run_parser.add_argument("--topic", required=True, help="Research topic to explore")
+    run_parser.add_argument("--topic", help="Research topic to explore")
+    run_parser.add_argument("--brief-file", help="Path to markdown brief file")
+    run_parser.add_argument("--brief-json", help="Path to structured brief JSON")
     run_parser.add_argument("--context-file", help="Path to notes describing current progress")
     run_parser.add_argument("--context", default="", help="Inline context text")
     run_parser.add_argument("--domain", action="append", default=[], help="Domain hint, repeatable")
@@ -41,29 +47,15 @@ def build_parser() -> argparse.ArgumentParser:
     run_parser.add_argument("--top-k", type=int, default=20, help="Number of ranked candidates to emphasize")
     run_parser.add_argument("--program-file", default="program.md", help="Human-authored search policy file")
     run_parser.add_argument("--runs-dir", default="runs", help="Directory for run artifacts")
+
+    brief_parser = subparsers.add_parser("brief", help="Convert a markdown brief into structured JSON")
+    brief_parser.add_argument("--input", default="brief.md", help="Input markdown brief path")
+    brief_parser.add_argument("--output", default="brief.json", help="Output JSON path")
     return parser
 
 
 def run_command(args: argparse.Namespace) -> None:
-    context_text = _read_optional_file(args.context_file)
-    if args.context:
-        context_text = f"{context_text}\n\n{args.context}".strip()
-
-    brief = ResearchBrief(
-        topic=args.topic,
-        context=context_text,
-        domains=args.domain,
-        must_include=args.must_include,
-        must_exclude=args.must_exclude,
-        since_year=args.since_year,
-        iterations=max(args.iterations, 0),
-        per_query=max(args.per_query, 1),
-        web_per_query=max(args.web_per_query, 0),
-        full_text_top_n=max(args.full_text_top_n, 0),
-        llm_rerank_top_n=max(args.llm_rerank_top_n, 0),
-        llm_summary_top_n=max(args.llm_summary_top_n, 0),
-        top_k=max(args.top_k, 1),
-    )
+    brief = _load_run_brief(args)
 
     program_text = _read_optional_file(args.program_file)
     if not program_text.strip():
@@ -87,6 +79,18 @@ def run_command(args: argparse.Namespace) -> None:
     _print_summary(artifacts.run_dir, artifacts.candidates[: brief.top_k])
 
 
+def brief_command(args: argparse.Namespace) -> None:
+    input_path = Path(args.input)
+    if not input_path.exists():
+        raise SystemExit(f"missing file: {input_path}")
+    brief = load_brief_markdown(input_path)
+    output_path = Path(args.output)
+    write_brief_json(output_path, brief)
+    print(f"input: {input_path}")
+    print(f"output: {output_path}")
+    print(f"topic: {brief.topic}")
+
+
 def _slugify(text: str) -> str:
     cleaned = []
     for char in text.lower():
@@ -98,6 +102,36 @@ def _slugify(text: str) -> str:
     while "--" in slug:
         slug = slug.replace("--", "-")
     return slug[:60] or "run"
+
+
+def _load_run_brief(args: argparse.Namespace) -> ResearchBrief:
+    if args.brief_json:
+        return load_brief_json(Path(args.brief_json))
+    if args.brief_file:
+        return load_brief_markdown(Path(args.brief_file))
+
+    context_text = _read_optional_file(args.context_file)
+    if args.context:
+        context_text = f"{context_text}\n\n{args.context}".strip()
+
+    if not args.topic:
+        raise SystemExit("either --topic, --brief-file, or --brief-json is required")
+
+    return ResearchBrief(
+        topic=args.topic,
+        context=context_text,
+        domains=args.domain,
+        must_include=args.must_include,
+        must_exclude=args.must_exclude,
+        since_year=args.since_year,
+        iterations=max(args.iterations, 0),
+        per_query=max(args.per_query, 1),
+        web_per_query=max(args.web_per_query, 0),
+        full_text_top_n=max(args.full_text_top_n, 0),
+        llm_rerank_top_n=max(args.llm_rerank_top_n, 0),
+        llm_summary_top_n=max(args.llm_summary_top_n, 0),
+        top_k=max(args.top_k, 1),
+    )
 
 
 def _read_optional_file(path: str | None) -> str:

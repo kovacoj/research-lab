@@ -1,0 +1,42 @@
+# Topic
+Test-time adaptation for language models
+
+## Context
+I have already looked at prompt tuning and inference-time methods.
+I want papers, surveys, and supporting material that strengthen the argument for practical adaptation at inference time.
+
+## Domains
+- NLP
+- machine learning
+
+## Must Include
+- language model
+- inference-time
+
+## Must Exclude
+- vision-language
+- robotics
+
+## Since Year
+2022
+
+## Iterations
+2
+
+## Per Query
+8
+
+## Web Per Query
+3
+
+## Full Text Top N
+5
+
+## LLM Rerank Top N
+8
+
+## LLM Summary Top N
+5
+
+## Top K
+20

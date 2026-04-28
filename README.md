@@ -44,6 +44,29 @@ PYTHONPATH=src python3 -m research_lab run \
   --web-per-query 3
 ```
 
+## Brief Workflow
+
+For terminal use, the cleanest loop is:
+
+1. Write `brief.md`
+2. Convert it to structured JSON
+3. Run the search from that brief
+
+```bash
+PYTHONPATH=src python3 -m research_lab brief --input brief.md --output brief.json
+PYTHONPATH=src python3 -m research_lab run --brief-json brief.json
+```
+
+You can also skip the intermediate JSON file:
+
+```bash
+PYTHONPATH=src python3 -m research_lab run --brief-file brief.md
+```
+
+The markdown parser understands sections like `Topic`, `Context`, `Domains`, `Must Include`, `Must Exclude`, and the numeric knobs such as `Iterations` or `Top K`.
+
+Start from `brief.md.example` if you want a parser-friendly template.
+
 ## Outputs
 
 Each run writes a folder like:

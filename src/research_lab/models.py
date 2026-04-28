@@ -23,6 +23,24 @@ class ResearchBrief:
     def to_dict(self) -> dict:
         return asdict(self)
 
+    @classmethod
+    def from_dict(cls, payload: dict) -> "ResearchBrief":
+        return cls(
+            topic=str(payload.get("topic", "")).strip(),
+            context=str(payload.get("context", "")).strip(),
+            domains=[str(item).strip() for item in payload.get("domains", []) if str(item).strip()],
+            must_include=[str(item).strip() for item in payload.get("must_include", []) if str(item).strip()],
+            must_exclude=[str(item).strip() for item in payload.get("must_exclude", []) if str(item).strip()],
+            since_year=_parse_optional_int(payload.get("since_year")),
+            iterations=max(_parse_optional_int(payload.get("iterations")) or 2, 0),
+            per_query=max(_parse_optional_int(payload.get("per_query")) or 8, 1),
+            web_per_query=max(_parse_optional_int(payload.get("web_per_query")) or 3, 0),
+            full_text_top_n=max(_parse_optional_int(payload.get("full_text_top_n")) or 5, 0),
+            llm_rerank_top_n=max(_parse_optional_int(payload.get("llm_rerank_top_n")) or 8, 0),
+            llm_summary_top_n=max(_parse_optional_int(payload.get("llm_summary_top_n")) or 5, 0),
+            top_k=max(_parse_optional_int(payload.get("top_k")) or 20, 1),
+        )
+
 
 @dataclass(slots=True)
 class QueryRecord:
@@ -32,6 +50,14 @@ class QueryRecord:
 
     def to_dict(self) -> dict:
         return asdict(self)
+
+    @classmethod
+    def from_dict(cls, payload: dict) -> "QueryRecord":
+        return cls(
+            query=str(payload.get("query", "")).strip(),
+            origin=str(payload.get("origin", "")).strip(),
+            iteration=_parse_optional_int(payload.get("iteration")) or 0,
+        )
 
 
 @dataclass(slots=True)
@@ -62,6 +88,34 @@ class PaperCandidate:
 
     def to_dict(self) -> dict:
         return asdict(self)
+
+    @classmethod
+    def from_dict(cls, payload: dict) -> "PaperCandidate":
+        return cls(
+            title=str(payload.get("title", "")).strip(),
+            abstract=str(payload.get("abstract", "")).strip(),
+            url=str(payload.get("url", "")).strip(),
+            source=str(payload.get("source", "")).strip(),
+            source_id=str(payload.get("source_id", "")).strip(),
+            authors=[str(item).strip() for item in payload.get("authors", []) if str(item).strip()],
+            year=_parse_optional_int(payload.get("year")),
+            venue=str(payload.get("venue", "")).strip(),
+            doi=str(payload.get("doi", "")).strip(),
+            citation_count=max(_parse_optional_int(payload.get("citation_count")) or 0, 0),
+            open_access_url=str(payload.get("open_access_url", "")).strip(),
+            document_kind=str(payload.get("document_kind", "paper")).strip() or "paper",
+            snippet=str(payload.get("snippet", "")).strip(),
+            full_text=str(payload.get("full_text", "")).strip(),
+            full_text_source=str(payload.get("full_text_source", "")).strip(),
+            fields_of_study=[str(item).strip() for item in payload.get("fields_of_study", []) if str(item).strip()],
+            matched_queries=[str(item).strip() for item in payload.get("matched_queries", []) if str(item).strip()],
+            source_names=[str(item).strip() for item in payload.get("source_names", []) if str(item).strip()],
+            score=float(payload.get("score", 0.0) or 0.0),
+            llm_score=float(payload["llm_score"]) if payload.get("llm_score") is not None else None,
+            reasons=[str(item).strip() for item in payload.get("reasons", []) if str(item).strip()],
+            llm_reasons=[str(item).strip() for item in payload.get("llm_reasons", []) if str(item).strip()],
+            evidence=[str(item).strip() for item in payload.get("evidence", []) if str(item).strip()],
+        )
 
 
 @dataclass(slots=True)
@@ -99,3 +153,12 @@ class RunArtifacts:
             warnings=warnings or [],
             synthesis=synthesis,
         )
+
+
+def _parse_optional_int(value: object) -> int | None:
+    if value in {None, ""}:
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
