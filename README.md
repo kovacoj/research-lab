@@ -145,3 +145,10 @@ If you set `RESEARCH_LAB_LLM_MODEL`, the lab will also:
 - produce an `LLM Synthesis` section that helps strengthen your argument and suggests follow-up queries
 
 If the LLM call fails or is not configured, the run still completes with heuristic ranking only.
+
+## OpenCode Prompts
+
+If you run OpenCode inside this repo, there are prompt files under `.opencode/agents/` for:
+
+- preparing `brief.md`
+- reviewing a run against a previous run
