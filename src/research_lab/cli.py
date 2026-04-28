@@ -74,7 +74,7 @@ def run_command(args: argparse.Namespace) -> None:
 
     runs_dir = Path(args.runs_dir)
     runs_dir.mkdir(parents=True, exist_ok=True)
-    run_id = datetime.utcnow().strftime("%Y%m%d-%H%M%S") + "-" + _slugify(args.topic)
+    run_id = datetime.utcnow().strftime("%Y%m%d-%H%M%S") + "-" + _slugify(brief.topic)
     run_dir = runs_dir / run_id
     run_dir.mkdir(parents=True, exist_ok=False)
     db_path = runs_dir / "index.sqlite3"
