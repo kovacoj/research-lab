@@ -67,6 +67,24 @@ The markdown parser understands sections like `Topic`, `Context`, `Domains`, `Mu
 
 Start from `brief.md.example` if you want a parser-friendly template.
 
+## Review Workflow
+
+To compare a new run against a previous one:
+
+```bash
+PYTHONPATH=src python3 -m research_lab review --run runs/<current-run-id>
+```
+
+This writes `review.md` into the run directory. If you want to choose the baseline explicitly:
+
+```bash
+PYTHONPATH=src python3 -m research_lab review \
+  --run runs/<current-run-id> \
+  --baseline runs/<older-run-id>
+```
+
+If `--baseline` is omitted, the tool tries to find the most recent earlier run for the same topic from `runs/index.sqlite3`.
+
 ## Outputs
 
 Each run writes a folder like:

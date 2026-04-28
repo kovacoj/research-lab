@@ -8,6 +8,7 @@ from datetime import datetime
 from research_lab.briefs import load_brief_json, load_brief_markdown, write_brief_json
 from research_lab.engine import execute_run
 from research_lab.models import ResearchBrief
+from research_lab.review import compare_runs, find_previous_run_ref, load_run_snapshot, write_review_markdown
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -19,6 +20,9 @@ def main(argv: list[str] | None = None) -> None:
         return
     if args.command == "brief":
         brief_command(args)
+        return
+    if args.command == "review":
+        review_command(args)
         return
 
     parser.print_help()
@@ -51,6 +55,13 @@ def build_parser() -> argparse.ArgumentParser:
     brief_parser = subparsers.add_parser("brief", help="Convert a markdown brief into structured JSON")
     brief_parser.add_argument("--input", default="brief.md", help="Input markdown brief path")
     brief_parser.add_argument("--output", default="brief.json", help="Output JSON path")
+
+    review_parser = subparsers.add_parser("review", help="Compare a run against a prior run")
+    review_parser.add_argument("--run", required=True, help="Run id or run directory to review")
+    review_parser.add_argument("--baseline", help="Baseline run id or run directory")
+    review_parser.add_argument("--runs-dir", default="runs", help="Directory that stores run artifacts")
+    review_parser.add_argument("--top-k", type=int, default=10, help="How many top candidates to compare")
+    review_parser.add_argument("--output", help="Optional output markdown path")
     return parser
 
 
@@ -89,6 +100,24 @@ def brief_command(args: argparse.Namespace) -> None:
     print(f"input: {input_path}")
     print(f"output: {output_path}")
     print(f"topic: {brief.topic}")
+
+
+def review_command(args: argparse.Namespace) -> None:
+    runs_dir = Path(args.runs_dir)
+    current = load_run_snapshot(args.run, runs_dir)
+    baseline_ref = args.baseline or find_previous_run_ref(current, runs_dir)
+    if baseline_ref is None:
+        raise SystemExit("no baseline run found to compare against")
+    baseline = load_run_snapshot(baseline_ref, runs_dir)
+    result = compare_runs(current, baseline, max(args.top_k, 1))
+    output_path = Path(args.output) if args.output else current.run_dir / "review.md"
+    write_review_markdown(result, output_path, max(args.top_k, 1))
+    print(f"run: {current.run_id}")
+    print(f"baseline: {baseline.run_id}")
+    print(f"output: {output_path}")
+    print(f"new_candidates: {len(result.new_candidates)}")
+    print(f"dropped_candidates: {len(result.dropped_candidates)}")
+    print(f"overlap: {len(result.overlap)}")
 
 
 def _slugify(text: str) -> str:
