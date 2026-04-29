@@ -68,9 +68,13 @@ class EngineTests(unittest.TestCase):
         query = QueryRecord(query="graph neural networks", origin="topic", iteration=0)
         warnings: list[str] = []
         source_state = {
+            "arxiv_enabled": True,
+            "arxiv_requests_remaining": 6,
             "semanticscholar_enabled": True,
             "semanticscholar_has_api_key": False,
             "semanticscholar_requests_remaining": 5,
+            "googlescholar_enabled": True,
+            "googlescholar_requests_remaining": 3,
         }
 
         with patch("research_lab.engine.search_arxiv", return_value=[]), patch(
@@ -93,9 +97,13 @@ class EngineTests(unittest.TestCase):
         query = QueryRecord(query='"Jane Doe" graph neural networks', origin="author_expansion", iteration=1)
         warnings: list[str] = []
         source_state = {
+            "arxiv_enabled": True,
+            "arxiv_requests_remaining": 6,
             "semanticscholar_enabled": True,
             "semanticscholar_has_api_key": False,
             "semanticscholar_requests_remaining": 5,
+            "googlescholar_enabled": True,
+            "googlescholar_requests_remaining": 3,
         }
 
         with patch("research_lab.engine.search_arxiv", return_value=[]), patch(
@@ -107,6 +115,57 @@ class EngineTests(unittest.TestCase):
 
         semantic_mock.assert_not_called()
         self.assertEqual(source_state["semanticscholar_requests_remaining"], 5)
+
+    def test_search_all_sources_disables_arxiv_after_rate_limit(self) -> None:
+        brief = ResearchBrief(topic="graph neural networks", context="")
+        query = QueryRecord(query="graph neural networks", origin="topic", iteration=0)
+        warnings: list[str] = []
+        source_state = {
+            "arxiv_enabled": True,
+            "arxiv_requests_remaining": 6,
+            "semanticscholar_enabled": False,
+            "semanticscholar_has_api_key": False,
+            "semanticscholar_requests_remaining": 0,
+            "googlescholar_enabled": False,
+            "googlescholar_requests_remaining": 0,
+        }
+
+        with patch("research_lab.engine.search_arxiv", side_effect=SourceError("request failed for arxiv: HTTP Error 429:")) as arxiv_mock, patch(
+            "research_lab.engine.search_openalex", return_value=[]
+        ), patch("research_lab.engine.search_duckduckgo", return_value=[]):
+            _search_all_sources(query, brief, object(), warnings, source_state)
+            _search_all_sources(query, brief, object(), warnings, source_state)
+
+        self.assertEqual(arxiv_mock.call_count, 1)
+        self.assertFalse(source_state["arxiv_enabled"])
+        self.assertEqual(warnings, ["arxiv disabled after rate limit"])
+
+    def test_search_all_sources_disables_google_scholar_after_block(self) -> None:
+        brief = ResearchBrief(topic="graph neural networks", context="")
+        query = QueryRecord(query="graph neural networks", origin="topic", iteration=0)
+        warnings: list[str] = []
+        source_state = {
+            "arxiv_enabled": False,
+            "arxiv_requests_remaining": 0,
+            "semanticscholar_enabled": False,
+            "semanticscholar_has_api_key": False,
+            "semanticscholar_requests_remaining": 0,
+            "googlescholar_enabled": True,
+            "googlescholar_requests_remaining": 3,
+        }
+
+        with patch("research_lab.engine.search_openalex", return_value=[]), patch(
+            "research_lab.engine.search_duckduckgo", return_value=[]
+        ), patch(
+            "research_lab.engine.search_google_scholar",
+            side_effect=SourceError("google scholar blocked automated access"),
+        ) as scholar_mock:
+            _search_all_sources(query, brief, object(), warnings, source_state)
+            _search_all_sources(query, brief, object(), warnings, source_state)
+
+        self.assertEqual(scholar_mock.call_count, 1)
+        self.assertFalse(source_state["googlescholar_enabled"])
+        self.assertEqual(warnings, ["google scholar disabled after block"])
 
 
 if __name__ == "__main__":
