@@ -67,7 +67,11 @@ class EngineTests(unittest.TestCase):
         brief = ResearchBrief(topic="graph neural networks", context="")
         query = QueryRecord(query="graph neural networks", origin="topic", iteration=0)
         warnings: list[str] = []
-        source_state = {"semanticscholar_enabled": True}
+        source_state = {
+            "semanticscholar_enabled": True,
+            "semanticscholar_has_api_key": False,
+            "semanticscholar_requests_remaining": 5,
+        }
 
         with patch("research_lab.engine.search_arxiv", return_value=[]), patch(
             "research_lab.engine.search_openalex", return_value=[]
@@ -83,6 +87,26 @@ class EngineTests(unittest.TestCase):
         self.assertEqual(semantic_mock.call_count, 1)
         self.assertFalse(source_state["semanticscholar_enabled"])
         self.assertEqual(warnings, ["semantic scholar disabled after rate limit"])
+
+    def test_search_all_sources_skips_semantic_scholar_for_low_value_expansion_without_key(self) -> None:
+        brief = ResearchBrief(topic="graph neural networks", context="")
+        query = QueryRecord(query='"Jane Doe" graph neural networks', origin="author_expansion", iteration=1)
+        warnings: list[str] = []
+        source_state = {
+            "semanticscholar_enabled": True,
+            "semanticscholar_has_api_key": False,
+            "semanticscholar_requests_remaining": 5,
+        }
+
+        with patch("research_lab.engine.search_arxiv", return_value=[]), patch(
+            "research_lab.engine.search_openalex", return_value=[]
+        ), patch("research_lab.engine.search_duckduckgo", return_value=[]), patch(
+            "research_lab.engine.search_google_scholar", return_value=[]
+        ), patch("research_lab.engine.search_semantic_scholar") as semantic_mock:
+            _search_all_sources(query, brief, object(), warnings, source_state)
+
+        semantic_mock.assert_not_called()
+        self.assertEqual(source_state["semanticscholar_requests_remaining"], 5)
 
 
 if __name__ == "__main__":

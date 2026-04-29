@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import Counter
+import os
 from pathlib import Path
 
 from research_lab.llm import LlmClient, LlmError, rerank_candidates_with_llm, summarize_candidates_with_llm
@@ -30,11 +31,16 @@ def execute_run(
     db_path: Path,
 ) -> RunArtifacts:
     client = HttpClient()
+    semantic_scholar_api_key = os.getenv("SEMANTIC_SCHOLAR_API_KEY", "").strip()
     all_queries: list[QueryRecord] = []
     seen_query_strings: set[str] = set()
     pool: list[PaperCandidate] = []
     warnings: list[str] = []
-    source_state = {"semanticscholar_enabled": True}
+    source_state = {
+        "semanticscholar_enabled": bool(semantic_scholar_api_key),
+        "semanticscholar_has_api_key": bool(semantic_scholar_api_key),
+        "semanticscholar_requests_remaining": 999 if semantic_scholar_api_key else 0,
+    }
 
     seed_queries = build_seed_queries(brief)
     for query in seed_queries:
@@ -56,8 +62,9 @@ def execute_run(
             expanded_pool.extend(_search_all_sources(query, brief, client, warnings, source_state))
 
         for candidate in seed_candidates[:2]:
-            if source_state["semanticscholar_enabled"] and candidate.source_id and candidate.source.startswith("semanticscholar"):
+            if _should_use_semantic_scholar(None, source_state) and candidate.source_id and candidate.source.startswith("semanticscholar"):
                 try:
+                    source_state["semanticscholar_requests_remaining"] -= 1
                     references = fetch_semantic_scholar_references(candidate.source_id, brief.per_query, client)
                 except SourceError as exc:
                     _handle_semantic_scholar_error(exc, warnings, source_state)
@@ -96,7 +103,7 @@ def _search_all_sources(
     brief: ResearchBrief,
     client: HttpClient,
     warnings: list[str],
-    source_state: dict[str, bool],
+    source_state: dict[str, object],
 ) -> list[PaperCandidate]:
     collected: list[PaperCandidate] = []
     try:
@@ -113,8 +120,9 @@ def _search_all_sources(
         collected.extend(openalex_results)
     except SourceError as exc:
         warnings.append(str(exc))
-    if source_state["semanticscholar_enabled"]:
+    if _should_use_semantic_scholar(query, source_state):
         try:
+            source_state["semanticscholar_requests_remaining"] -= 1
             semantic_results = search_semantic_scholar(query.query, brief.per_query, brief.since_year, client)
             for candidate in semantic_results:
                 candidate.matched_queries.append(query.query)
@@ -138,13 +146,25 @@ def _search_all_sources(
     return collected
 
 
-def _handle_semantic_scholar_error(exc: SourceError, warnings: list[str], source_state: dict[str, bool]) -> None:
+def _handle_semantic_scholar_error(exc: SourceError, warnings: list[str], source_state: dict[str, object]) -> None:
     if "HTTP Error 429" in str(exc):
         if source_state["semanticscholar_enabled"]:
             warnings.append("semantic scholar disabled after rate limit")
         source_state["semanticscholar_enabled"] = False
         return
     warnings.append(str(exc))
+
+
+def _should_use_semantic_scholar(query: QueryRecord | None, source_state: dict[str, object]) -> bool:
+    if not source_state["semanticscholar_enabled"]:
+        return False
+    if int(source_state["semanticscholar_requests_remaining"]) <= 0:
+        return False
+    if bool(source_state["semanticscholar_has_api_key"]):
+        return True
+    if query is None:
+        return True
+    return query.origin not in {"author_expansion", "title_expansion"}
 
 
 def _add_query(query: QueryRecord, all_queries: list[QueryRecord], seen: set[str]) -> bool:
