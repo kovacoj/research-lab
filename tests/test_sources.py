@@ -8,6 +8,7 @@ from research_lab.models import PaperCandidate
 from research_lab.sources import (
     HttpResponse,
     SourceError,
+    _clean_extracted_text,
     _decode_duckduckgo_url,
     _extract_text_from_html,
     fetch_candidate_full_text,
@@ -49,6 +50,23 @@ class SourceHelpersTests(unittest.TestCase):
         self.assertIn("Claim", text)
         self.assertIn("strengthens the argument", text)
         self.assertNotIn("ignore me", text)
+
+    def test_clean_extracted_text_strips_pdf_noise_tokens(self) -> None:
+        noisy = "Article https://doi.org/10.1000/test Received: 17 September 2022 1234567890():,; Graph neural networks improve property prediction."
+
+        cleaned = _clean_extracted_text(noisy)
+
+        self.assertIn("Graph neural networks improve property prediction.", cleaned)
+        self.assertNotIn("1234567890():,;", cleaned)
+        self.assertNotIn("https://doi.org", cleaned)
+
+    def test_clean_extracted_text_prefers_abstract_on_pdf_front_matter(self) -> None:
+        noisy = "Title Jane Doe jane@example.com Received 2024 Abstract Graph neural networks improve molecular property prediction with benchmark gains."
+
+        cleaned = _clean_extracted_text(noisy)
+
+        self.assertTrue(cleaned.startswith("Abstract Graph neural networks improve molecular property prediction"))
+        self.assertNotIn("jane@example.com", cleaned)
 
     def test_search_arxiv_parses_atom_feed(self) -> None:
         xml = b"""<?xml version='1.0' encoding='UTF-8'?>

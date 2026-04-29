@@ -273,6 +273,21 @@ def _clean_text(text: str) -> str:
     return re.sub(r"\s+", " ", text).strip()
 
 
+def _clean_extracted_text(text: str) -> str:
+    cleaned = text.replace("\x0c", " ")
+    cleaned = re.sub(r"(?:^|\s)[\d():,;]{8,}(?=\s|$)", " ", cleaned)
+    cleaned = re.sub(r"\b(?:received|accepted|published online|check for updates)\b", " ", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"https?://\S+", " ", cleaned)
+    cleaned = re.sub(r"\b[\w.+-]+@[\w.-]+\.\w+\b", " ", cleaned)
+    cleaned = _clean_text(cleaned)
+    abstract_match = re.search(r"\babstract\b", cleaned, flags=re.IGNORECASE)
+    introduction_match = re.search(r"\bintroduction\b", cleaned, flags=re.IGNORECASE)
+    match = abstract_match or introduction_match
+    if match is not None and 0 < match.start() < 2500:
+        cleaned = cleaned[match.start() :]
+    return _clean_text(cleaned)
+
+
 def _decode_duckduckgo_url(url: str) -> str:
     parsed = urllib.parse.urlparse(url)
     if parsed.path.endswith("/l/") or parsed.path == "/l/":
@@ -726,7 +741,7 @@ def _extract_text_from_html(html: str) -> str:
     parser = HtmlTextParser()
     parser.feed(html)
     parser.close()
-    text = parser.text()
+    text = _clean_extracted_text(parser.text())
     return text[:20000]
 
 
@@ -744,10 +759,10 @@ def _extract_text_from_pdf_bytes(payload: bytes) -> str:
                     capture_output=True,
                     timeout=30,
                 )
-                return _clean_text(txt_path.read_text(encoding="utf-8", errors="ignore"))[:20000]
+                return _clean_extracted_text(txt_path.read_text(encoding="utf-8", errors="ignore"))[:20000]
             except Exception:
                 pass
 
     decoded = payload.decode("latin-1", errors="ignore")
     fragments = re.findall(r"\(([A-Za-z0-9 ,.;:()\-_/]{20,})\)", decoded)
-    return _clean_text(" ".join(fragments))[:20000]
+    return _clean_extracted_text(" ".join(fragments))[:20000]

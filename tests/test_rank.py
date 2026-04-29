@@ -145,6 +145,18 @@ class RankTests(unittest.TestCase):
         self.assertGreaterEqual(len(evidence), 1)
         self.assertIn("prompt tuning", evidence[0].lower())
 
+    def test_extract_evidence_sentences_trims_pdf_preamble(self) -> None:
+        brief = ResearchBrief(topic="graph neural networks for molecular property prediction", context="")
+        text = (
+            "Article Chemistry-intuitive explanation of graph neural networks for molecular property prediction with substructure masking "
+            "Received 2022 Jane Doe, John Roe, Foo Bar. Graph neural networks for molecular property prediction are widely used in chemistry."
+        )
+
+        evidence = extract_evidence_sentences(text, brief)
+
+        self.assertGreaterEqual(len(evidence), 1)
+        self.assertTrue(evidence[0].lower().startswith("graph neural networks for molecular property prediction"))
+
     def test_rank_prefers_structured_paper_over_light_metadata_web_page(self) -> None:
         brief = ResearchBrief(topic="mixed precision training", context="I need foundational and practical training sources.")
         paper = PaperCandidate(
@@ -234,6 +246,38 @@ class RankTests(unittest.TestCase):
         ranked = rank_candidates([method_paper, review_paper], brief)
 
         self.assertEqual(ranked[0].title, review_paper.title)
+
+    def test_rank_prefers_foundational_comparison_when_context_is_mixed_intent(self) -> None:
+        brief = ResearchBrief(
+            topic="graph neural networks for molecular property prediction",
+            context="I want foundational and practical papers, plus strong surveys and benchmark-oriented sources.",
+        )
+        exact_method = PaperCandidate(
+            title="Cross-dependent graph neural networks for molecular property prediction",
+            abstract="A direct method paper for the task.",
+            url="https://example.com/method",
+            source="openalex",
+            source_id="oa:method-2",
+            year=2024,
+            citation_count=8,
+            document_kind="paper",
+            source_names=["openalex"],
+        )
+        foundational_comparison = PaperCandidate(
+            title="Could graph neural networks learn better molecular representation for drug discovery? A comparison study of descriptor-based and graph-based models",
+            abstract="This comparison study benchmarks graph-based and descriptor-based models across datasets.",
+            url="https://example.com/comparison",
+            source="openalex",
+            source_id="oa:comparison",
+            year=2021,
+            citation_count=350,
+            document_kind="paper",
+            source_names=["openalex"],
+        )
+
+        ranked = rank_candidates([exact_method, foundational_comparison], brief)
+
+        self.assertEqual(ranked[0].title, foundational_comparison.title)
 
 
 if __name__ == "__main__":

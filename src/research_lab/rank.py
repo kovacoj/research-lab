@@ -147,20 +147,40 @@ def _context_intent_bonus(candidate: PaperCandidate, brief: ResearchBrief, searc
     title_norm = normalize_title(candidate.title)
     bonus = 0.0
     reasons: list[str] = []
+    broad_intent_requested = any(term in context for term in SURVEY_TERMS | BENCHMARK_TERMS) or "foundational" in context
 
     if any(term in context for term in SURVEY_TERMS) and any(term in title_norm for term in SURVEY_TERMS):
-        bonus += 0.14
+        bonus += 0.18
         reasons.append("matches survey intent")
 
     if any(term in context for term in BENCHMARK_TERMS) and any(term in searchable_lower for term in BENCHMARK_TERMS):
-        bonus += 0.1
+        bonus += 0.18
         reasons.append("matches benchmark intent")
 
     if "foundational" in context and candidate.citation_count >= 100:
-        bonus += 0.08
+        bonus += 0.16
         reasons.append("matches foundational intent")
 
+    exact_topic = normalize_title(brief.topic)
+    has_broad_intent_signal = any(term in searchable_lower for term in SURVEY_TERMS | BENCHMARK_TERMS)
+    if broad_intent_requested and exact_topic and exact_topic in title_norm and not has_broad_intent_signal and candidate.citation_count < 50:
+        bonus -= 0.24
+        reasons.append("narrow method match against broad intent")
+
     return bonus, reasons
+
+
+def _trim_evidence_preamble(text: str, brief: ResearchBrief) -> str:
+    lowered = text.lower()
+    abstract_index = lowered.find("abstract")
+    if 0 < abstract_index < 400:
+        return text[abstract_index:].strip()
+
+    topic_phrase = normalize_title(brief.topic)
+    topic_index = lowered.find(topic_phrase)
+    if topic_phrase and topic_index > 40:
+        return text[topic_index:].strip()
+    return text
 
 
 def extract_evidence_sentences(text: str, brief: ResearchBrief, limit: int = 3) -> list[str]:
@@ -170,7 +190,7 @@ def extract_evidence_sentences(text: str, brief: ResearchBrief, limit: int = 3) 
     sentences = re.split(r"(?<=[.!?])\s+|\n+", text)
     scored: list[tuple[float, str]] = []
     for sentence in sentences:
-        cleaned = sentence.strip()
+        cleaned = _trim_evidence_preamble(sentence.strip(), brief)
         if len(cleaned) < 40:
             continue
         terms = _keyword_set(cleaned)

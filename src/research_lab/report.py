@@ -51,6 +51,7 @@ def write_run_files(run_dir: Path, artifacts: RunArtifacts) -> None:
     high_confidence = [candidate for candidate in top if candidate.score >= 0.35]
     exploratory = [candidate for candidate in top if candidate.score < 0.35]
     requested_articles = [candidate for candidate in top if _needs_user_article(candidate)]
+    broad_intent_matches = [candidate for candidate in top if _matches_broad_intent(candidate)]
 
     lines: list[str] = [
         f"# Research Run {artifacts.run_id}",
@@ -69,6 +70,10 @@ def write_run_files(run_dir: Path, artifacts: RunArtifacts) -> None:
         lines.extend(f"- {warning}" for warning in artifacts.warnings[:20])
     if artifacts.synthesis:
         lines.extend(["", "## LLM Synthesis", artifacts.synthesis])
+    if broad_intent_matches:
+        lines.extend(["", "## Broad Coverage Matches"])
+        for candidate in broad_intent_matches[:4]:
+            lines.extend(_render_candidate(candidate))
     lines.extend(["", "## High Confidence Matches"])
     if high_confidence:
         for candidate in high_confidence:
@@ -145,6 +150,15 @@ def _needs_user_article(candidate: PaperCandidate) -> bool:
         and candidate.access_status in {"paywalled", "abstract_only", "unreadable"}
         and candidate.score >= 0.45
     )
+
+
+def _matches_broad_intent(candidate: PaperCandidate) -> bool:
+    broad_intent_reasons = {
+        "matches survey intent",
+        "matches benchmark intent",
+        "matches foundational intent",
+    }
+    return any(reason in broad_intent_reasons for reason in candidate.reasons)
 
 
 def _render_article_request(candidate: PaperCandidate) -> list[str]:
