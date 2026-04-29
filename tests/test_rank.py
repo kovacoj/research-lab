@@ -203,6 +203,38 @@ class RankTests(unittest.TestCase):
 
         self.assertEqual(ranked[0].title, precise.title)
 
+    def test_rank_prefers_review_when_context_requests_foundational_survey_sources(self) -> None:
+        brief = ResearchBrief(
+            topic="graph neural networks for molecular property prediction",
+            context="I want foundational and practical papers, plus strong surveys and benchmark-oriented sources.",
+        )
+        method_paper = PaperCandidate(
+            title="Cross-dependent graph neural networks for molecular property prediction",
+            abstract="A direct method paper for the task.",
+            url="https://example.com/method",
+            source="openalex",
+            source_id="oa:method",
+            year=2024,
+            citation_count=8,
+            document_kind="paper",
+            source_names=["openalex"],
+        )
+        review_paper = PaperCandidate(
+            title="A compact review of molecular property prediction with graph neural networks",
+            abstract="This review benchmarks models and surveys the field.",
+            url="https://example.com/review",
+            source="openalex",
+            source_id="oa:review",
+            year=2020,
+            citation_count=400,
+            document_kind="paper",
+            source_names=["openalex"],
+        )
+
+        ranked = rank_candidates([method_paper, review_paper], brief)
+
+        self.assertEqual(ranked[0].title, review_paper.title)
+
 
 if __name__ == "__main__":
     unittest.main()
