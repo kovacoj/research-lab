@@ -155,7 +155,8 @@ class RankTests(unittest.TestCase):
         evidence = extract_evidence_sentences(text, brief)
 
         self.assertGreaterEqual(len(evidence), 1)
-        self.assertTrue(evidence[0].lower().startswith("graph neural networks for molecular property prediction"))
+        self.assertTrue(evidence[0].lower().startswith("graph neural networks"))
+        self.assertNotIn("jane doe", evidence[0].lower())
 
     def test_rank_prefers_structured_paper_over_light_metadata_web_page(self) -> None:
         brief = ResearchBrief(topic="mixed precision training", context="I need foundational and practical training sources.")

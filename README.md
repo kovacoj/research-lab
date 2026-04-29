@@ -136,12 +136,12 @@ The root `runs/index.sqlite3` file keeps a searchable run history.
 
 - `OPENALEX_API_KEY`: optional OpenAlex API key.
 - `OPENALEX_EMAIL`: optional email sent as `mailto` for polite pool usage.
-- `SEMANTIC_SCHOLAR_API_KEY`: optional Semantic Scholar API key.
+- `SEMANTIC_SCHOLAR_API_KEY`: Semantic Scholar API key. The lab only uses Semantic Scholar when this is configured, to avoid unreliable public-endpoint rate limiting.
 - `RESEARCH_LAB_LLM_MODEL`: optional model name for the LLM reranker/summarizer.
 - `RESEARCH_LAB_LLM_BASE_URL`: optional OpenAI-compatible base URL. Defaults to `https://api.openai.com/v1`.
 - `RESEARCH_LAB_LLM_API_KEY`: optional API key for the configured LLM endpoint.
 
-The code works without keys, but public endpoints may rate limit more aggressively.
+The code works without keys, but Semantic Scholar retrieval is skipped unless `SEMANTIC_SCHOLAR_API_KEY` is configured.
 
 Google Scholar retrieval is intentionally opt-in through `--scholar-per-query`. It uses brittle HTML scraping rather than an official API, so it may fail or get blocked on some runs.
 
