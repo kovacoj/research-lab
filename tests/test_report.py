@@ -38,6 +38,32 @@ class ReportTests(unittest.TestCase):
             self.assertIn("Paywalled Adaptation Paper", report)
             self.assertIn("why request", report)
 
+    def test_write_run_files_requests_unreadable_high_score_paper(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            run_dir = Path(tmpdir)
+            brief = ResearchBrief(topic="graph neural networks", context="notes")
+            candidate = PaperCandidate(
+                title="Unreadable But Relevant Paper",
+                abstract="Strong metadata but no readable page.",
+                url="https://example.com/paper",
+                source="semanticscholar",
+                source_id="s2:paper",
+                year=2024,
+                venue="Bioinformatics",
+                source_names=["semanticscholar"],
+                score=0.91,
+                reasons=["topic overlap 4/4", "has abstract"],
+                access_status="unreadable",
+                access_url="https://example.com/paper",
+            )
+            artifacts = RunArtifacts.create("run-2", str(run_dir), brief, [], [candidate], "program")
+
+            write_run_files(run_dir, artifacts)
+
+            report = (run_dir / "report.md").read_text(encoding="utf-8")
+            self.assertIn("Unreadable But Relevant Paper", report)
+            self.assertIn("access=unreadable", report)
+
 
 if __name__ == "__main__":
     unittest.main()
