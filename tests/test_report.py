@@ -64,6 +64,30 @@ class ReportTests(unittest.TestCase):
             self.assertIn("Unreadable But Relevant Paper", report)
             self.assertIn("access=unreadable", report)
 
+    def test_write_run_files_includes_broad_coverage_matches(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            run_dir = Path(tmpdir)
+            brief = ResearchBrief(topic="graph neural networks", context="I want strong surveys and foundational sources.")
+            candidate = PaperCandidate(
+                title="A compact review of graph neural networks",
+                abstract="A survey article.",
+                url="https://example.com/review",
+                source="openalex",
+                source_id="oa:review",
+                year=2020,
+                venue="Journal of Testing",
+                source_names=["openalex"],
+                score=0.88,
+                reasons=["topic overlap 3/3", "matches survey intent", "matches foundational intent"],
+            )
+            artifacts = RunArtifacts.create("run-3", str(run_dir), brief, [], [candidate], "program")
+
+            write_run_files(run_dir, artifacts)
+
+            report = (run_dir / "report.md").read_text(encoding="utf-8")
+            self.assertIn("## Broad Coverage Matches", report)
+            self.assertIn("A compact review of graph neural networks", report)
+
 
 if __name__ == "__main__":
     unittest.main()
