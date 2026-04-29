@@ -19,6 +19,7 @@ Use it when it helps with structure, repeatability, or comparison. Do not force 
 3. Strengthen the user's argument with evidence, counterpoints, and follow-up queries.
 4. Leave behind reproducible artifacts in `runs/` when a formal run is useful.
 5. Compare runs and refine the search direction over time.
+6. If a strong paper is blocked by a paywall or only an abstract is reachable, record it clearly so the user can fetch it with institutional access.
 
 ## Suggested workflow
 

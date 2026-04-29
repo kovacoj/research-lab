@@ -13,7 +13,9 @@ from research_lab.sources import (
     SourceError,
     fetch_candidate_full_text,
     fetch_semantic_scholar_references,
+    search_arxiv,
     search_duckduckgo,
+    search_google_scholar,
     search_openalex,
     search_semantic_scholar,
 )
@@ -96,6 +98,13 @@ def _search_all_sources(
 ) -> list[PaperCandidate]:
     collected: list[PaperCandidate] = []
     try:
+        arxiv_results = search_arxiv(query.query, brief.per_query, brief.since_year, client)
+        for candidate in arxiv_results:
+            candidate.matched_queries.append(query.query)
+        collected.extend(arxiv_results)
+    except SourceError as exc:
+        warnings.append(str(exc))
+    try:
         openalex_results = search_openalex(query.query, brief.per_query, brief.since_year, client)
         for candidate in openalex_results:
             candidate.matched_queries.append(query.query)
@@ -114,6 +123,13 @@ def _search_all_sources(
         for candidate in web_results:
             candidate.matched_queries.append(query.query)
         collected.extend(web_results)
+    except SourceError as exc:
+        warnings.append(str(exc))
+    try:
+        scholar_results = search_google_scholar(query.query, brief.scholar_per_query, client)
+        for candidate in scholar_results:
+            candidate.matched_queries.append(query.query)
+        collected.extend(scholar_results)
     except SourceError as exc:
         warnings.append(str(exc))
     return collected
@@ -170,13 +186,19 @@ def _enrich_top_candidates(
         if candidate.full_text:
             continue
         try:
-            full_text, full_text_source = fetch_candidate_full_text(candidate, client)
+            result = fetch_candidate_full_text(candidate, client)
         except SourceError as exc:
             warnings.append(str(exc))
             continue
-        candidate.full_text = full_text
-        candidate.full_text_source = full_text_source
-        candidate.evidence = extract_evidence_sentences(full_text, brief)
+        candidate.access_status = result.access_status
+        candidate.access_url = result.access_url
+        if not result.text:
+            if result.access_status == "unreadable":
+                warnings.append(f"no readable content found for {candidate.title}")
+            continue
+        candidate.full_text = result.text
+        candidate.full_text_source = result.source
+        candidate.evidence = extract_evidence_sentences(result.text, brief)
 
 
 def _apply_llm_layer(ranked: list[PaperCandidate], brief: ResearchBrief, warnings: list[str]) -> str:

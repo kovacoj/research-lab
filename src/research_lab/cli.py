@@ -45,6 +45,7 @@ def build_parser() -> argparse.ArgumentParser:
     run_parser.add_argument("--iterations", type=int, default=2, help="Number of expansion rounds")
     run_parser.add_argument("--per-query", type=int, default=8, help="Candidates to fetch per query and source")
     run_parser.add_argument("--web-per-query", type=int, default=3, help="General web results to fetch per query")
+    run_parser.add_argument("--scholar-per-query", type=int, default=0, help="Google Scholar results to fetch per query")
     run_parser.add_argument("--full-text-top-n", type=int, default=5, help="Top candidates to enrich with full text")
     run_parser.add_argument("--llm-rerank-top-n", type=int, default=8, help="Top candidates to rerank with an optional LLM")
     run_parser.add_argument("--llm-summary-top-n", type=int, default=5, help="Top candidates to include in optional LLM synthesis")
@@ -156,6 +157,7 @@ def _load_run_brief(args: argparse.Namespace) -> ResearchBrief:
         iterations=max(args.iterations, 0),
         per_query=max(args.per_query, 1),
         web_per_query=max(args.web_per_query, 0),
+        scholar_per_query=max(args.scholar_per_query, 0),
         full_text_top_n=max(args.full_text_top_n, 0),
         llm_rerank_top_n=max(args.llm_rerank_top_n, 0),
         llm_summary_top_n=max(args.llm_summary_top_n, 0),
