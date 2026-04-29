@@ -37,9 +37,13 @@ def execute_run(
     pool: list[PaperCandidate] = []
     warnings: list[str] = []
     source_state = {
+        "arxiv_enabled": True,
+        "arxiv_requests_remaining": 6,
         "semanticscholar_enabled": bool(semantic_scholar_api_key),
         "semanticscholar_has_api_key": bool(semantic_scholar_api_key),
         "semanticscholar_requests_remaining": 999 if semantic_scholar_api_key else 0,
+        "googlescholar_enabled": brief.scholar_per_query > 0,
+        "googlescholar_requests_remaining": 3 if brief.scholar_per_query > 0 else 0,
     }
 
     seed_queries = build_seed_queries(brief)
@@ -106,13 +110,15 @@ def _search_all_sources(
     source_state: dict[str, object],
 ) -> list[PaperCandidate]:
     collected: list[PaperCandidate] = []
-    try:
-        arxiv_results = search_arxiv(query.query, brief.per_query, brief.since_year, client)
-        for candidate in arxiv_results:
-            candidate.matched_queries.append(query.query)
-        collected.extend(arxiv_results)
-    except SourceError as exc:
-        warnings.append(str(exc))
+    if _should_use_arxiv(query, source_state):
+        try:
+            source_state["arxiv_requests_remaining"] -= 1
+            arxiv_results = search_arxiv(query.query, brief.per_query, brief.since_year, client)
+            for candidate in arxiv_results:
+                candidate.matched_queries.append(query.query)
+            collected.extend(arxiv_results)
+        except SourceError as exc:
+            _handle_arxiv_error(exc, warnings, source_state)
     try:
         openalex_results = search_openalex(query.query, brief.per_query, brief.since_year, client)
         for candidate in openalex_results:
@@ -136,14 +142,26 @@ def _search_all_sources(
         collected.extend(web_results)
     except SourceError as exc:
         warnings.append(str(exc))
-    try:
-        scholar_results = search_google_scholar(query.query, brief.scholar_per_query, client)
-        for candidate in scholar_results:
-            candidate.matched_queries.append(query.query)
-        collected.extend(scholar_results)
-    except SourceError as exc:
-        warnings.append(str(exc))
+    if _should_use_google_scholar(query, source_state):
+        try:
+            source_state["googlescholar_requests_remaining"] -= 1
+            scholar_results = search_google_scholar(query.query, brief.scholar_per_query, client)
+            for candidate in scholar_results:
+                candidate.matched_queries.append(query.query)
+            collected.extend(scholar_results)
+        except SourceError as exc:
+            _handle_google_scholar_error(exc, warnings, source_state)
     return collected
+
+
+def _handle_arxiv_error(exc: SourceError, warnings: list[str], source_state: dict[str, object]) -> None:
+    message = str(exc)
+    if "HTTP Error 429" in message or "timed out" in message:
+        if source_state["arxiv_enabled"]:
+            warnings.append("arxiv disabled after rate limit")
+        source_state["arxiv_enabled"] = False
+        return
+    warnings.append(message)
 
 
 def _handle_semantic_scholar_error(exc: SourceError, warnings: list[str], source_state: dict[str, object]) -> None:
@@ -155,6 +173,23 @@ def _handle_semantic_scholar_error(exc: SourceError, warnings: list[str], source
     warnings.append(str(exc))
 
 
+def _handle_google_scholar_error(exc: SourceError, warnings: list[str], source_state: dict[str, object]) -> None:
+    if "google scholar blocked automated access" in str(exc):
+        if source_state["googlescholar_enabled"]:
+            warnings.append("google scholar disabled after block")
+        source_state["googlescholar_enabled"] = False
+        return
+    warnings.append(str(exc))
+
+
+def _should_use_arxiv(query: QueryRecord, source_state: dict[str, object]) -> bool:
+    if not source_state["arxiv_enabled"]:
+        return False
+    if int(source_state["arxiv_requests_remaining"]) <= 0:
+        return False
+    return query.origin not in {"author_expansion", "title_expansion"}
+
+
 def _should_use_semantic_scholar(query: QueryRecord | None, source_state: dict[str, object]) -> bool:
     if not source_state["semanticscholar_enabled"]:
         return False
@@ -164,6 +199,14 @@ def _should_use_semantic_scholar(query: QueryRecord | None, source_state: dict[s
         return True
     if query is None:
         return True
+    return query.origin not in {"author_expansion", "title_expansion"}
+
+
+def _should_use_google_scholar(query: QueryRecord, source_state: dict[str, object]) -> bool:
+    if not source_state["googlescholar_enabled"]:
+        return False
+    if int(source_state["googlescholar_requests_remaining"]) <= 0:
+        return False
     return query.origin not in {"author_expansion", "title_expansion"}
 
 

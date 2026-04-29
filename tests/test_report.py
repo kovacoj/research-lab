@@ -88,6 +88,30 @@ class ReportTests(unittest.TestCase):
             self.assertIn("## Broad Coverage Matches", report)
             self.assertIn("A compact review of graph neural networks", report)
 
+    def test_write_run_files_includes_useful_web_sources(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            run_dir = Path(tmpdir)
+            brief = ResearchBrief(topic="ai agents", context="include useful engineering explainers")
+            candidate = PaperCandidate(
+                title="Agentic Engineering Explained",
+                abstract="A practical engineering explainer.",
+                url="https://example.com/blog",
+                source="duckduckgo",
+                source_id="web:blog",
+                venue="example.com",
+                document_kind="web",
+                source_names=["duckduckgo"],
+                score=0.44,
+                reasons=["topic overlap 2/3", "context overlap 1/4"],
+            )
+            artifacts = RunArtifacts.create("run-4", str(run_dir), brief, [], [candidate], "program")
+
+            write_run_files(run_dir, artifacts)
+
+            report = (run_dir / "report.md").read_text(encoding="utf-8")
+            self.assertIn("## Useful Web Sources", report)
+            self.assertIn("Agentic Engineering Explained", report)
+
 
 if __name__ == "__main__":
     unittest.main()
