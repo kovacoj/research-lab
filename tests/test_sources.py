@@ -7,6 +7,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from research_lab.models import PaperCandidate
 from research_lab.sources import (
     HttpResponse,
+    SourceError,
     _decode_duckduckgo_url,
     _extract_text_from_html,
     fetch_candidate_full_text,
@@ -92,8 +93,8 @@ class SourceHelpersTests(unittest.TestCase):
               <div class='gs_or_ggsm'><a href='https://example.com/paper.pdf'>[PDF]</a></div>
             </div>
             <div class='gs_ri'>
-              <h3 class='gs_rt'><a href='https://example.com/paper'>Test-Time Adaptation for Language Models</a></h3>
-              <div class='gs_a'>Jane Doe, John Roe - Journal of Testing, 2024</div>
+              <h3 class='gs_rt'><a href='https://example.com/paper'>[HTML][HTML] Test-Time Adaptation for Language Models</a></h3>
+              <div class='gs_a'>Jane Doe, John Roe...- Journal of Testing, 2024 - Example Publisher</div>
               <div class='gs_rs'>A strong paper about inference-time adaptation.</div>
             </div>
           </div>
@@ -113,8 +114,10 @@ class SourceHelpersTests(unittest.TestCase):
 
         self.assertEqual(len(results), 1)
         self.assertEqual(results[0].source, "googlescholar")
+        self.assertEqual(results[0].title, "Test-Time Adaptation for Language Models")
         self.assertEqual(results[0].authors, ["Jane Doe", "John Roe"])
         self.assertEqual(results[0].year, 2024)
+        self.assertEqual(results[0].venue, "Journal of Testing")
         self.assertEqual(results[0].open_access_url, "https://example.com/paper.pdf")
 
     def test_fetch_candidate_full_text_marks_abstract_only_paper(self) -> None:
@@ -148,6 +151,27 @@ class SourceHelpersTests(unittest.TestCase):
 
         self.assertEqual(result.access_status, "abstract_only")
         self.assertEqual(result.text, "")
+
+    def test_fetch_candidate_full_text_marks_403_as_paywalled(self) -> None:
+        candidate = PaperCandidate(
+            title="Blocked Paper",
+            abstract="",
+            url="https://example.com/paywalled",
+            source="openalex",
+            source_id="oa:blocked",
+            document_kind="paper",
+            source_names=["openalex"],
+        )
+
+        class _FailingClient:
+            def fetch(self, url: str, headers: dict[str, str] | None = None) -> HttpResponse:
+                del headers
+                raise SourceError(f"request failed for {url}: HTTP Error 403: Forbidden")
+
+        result = fetch_candidate_full_text(candidate, _FailingClient())
+
+        self.assertEqual(result.access_status, "paywalled")
+        self.assertEqual(result.access_url, "https://example.com/paywalled")
 
 
 if __name__ == "__main__":

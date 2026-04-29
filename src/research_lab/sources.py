@@ -314,23 +314,33 @@ def _extract_year(text: str) -> int | None:
 def _parse_scholar_authors(metadata: str) -> list[str]:
     if not metadata:
         return []
-    prefix = metadata.split(" - ", 1)[0]
+    prefix = _split_scholar_metadata(metadata)[0]
     authors: list[str] = []
     for item in prefix.split(","):
-        cleaned = item.strip()
-        if cleaned and cleaned not in {"...", "…"}:
+        cleaned = item.strip().rstrip(". …")
+        if cleaned and cleaned not in {"...", "…"} and not re.fullmatch(r"(19|20)\d{2}", cleaned):
             authors.append(cleaned)
     return authors[:6]
 
 
 def _parse_scholar_venue(metadata: str, year: int | None) -> str:
-    parts = [part.strip() for part in metadata.split(" - ") if part.strip()]
+    parts = _split_scholar_metadata(metadata)
     if len(parts) < 2:
         return ""
     venue = parts[1]
     if year is not None:
         venue = venue.replace(str(year), "").strip(" ,")
     return venue
+
+
+def _split_scholar_metadata(metadata: str) -> list[str]:
+    parts = [part.strip(" ,") for part in re.split(r"\s*[\u2013\u2014-]\s+", metadata) if part.strip(" ,")]
+    return parts or [metadata.strip()]
+
+
+def _clean_scholar_title(title: str) -> str:
+    cleaned = re.sub(r"^(?:\[(?:HTML|PDF|BOOK|CITATION)\])+\s*", "", title, flags=re.IGNORECASE)
+    return _clean_text(cleaned)
 
 
 def _looks_like_paywall(text: str) -> bool:
@@ -360,6 +370,13 @@ def _looks_like_full_text(text: str) -> bool:
         if re.search(rf"\b{marker}\b", text)
     )
     return section_hits >= 3 or (section_hits >= 2 and len(text) >= 5000)
+
+
+def _classify_fetch_error(url: str, exc: SourceError) -> FullTextResult:
+    message = str(exc)
+    if any(code in message for code in ["HTTP Error 401", "HTTP Error 403", "HTTP Error 451"]):
+        return FullTextResult(text="", source="", access_status="paywalled", access_url=url)
+    return FullTextResult(text="", source="", access_status="unreadable", access_url=url)
 
 
 def _classify_html_access(candidate: PaperCandidate, response: HttpResponse) -> FullTextResult:
@@ -457,7 +474,7 @@ def search_google_scholar(
         year = _extract_year(item["meta"])
         results.append(
             PaperCandidate(
-                title=item["title"],
+                title=_clean_scholar_title(item["title"]),
                 abstract=item["snippet"],
                 url=item["url"],
                 source="googlescholar",
@@ -684,6 +701,7 @@ def fetch_candidate_full_text(candidate: PaperCandidate, client: HttpClient) -> 
         try:
             response = client.fetch(url, headers={"Accept": "text/html,application/pdf;q=0.9,*/*;q=0.8"})
         except SourceError as exc:
+            last_result = _classify_fetch_error(url, exc)
             last_error = exc
             continue
         content_type = response.content_type.lower()

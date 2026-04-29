@@ -142,7 +142,7 @@ def _needs_user_article(candidate: PaperCandidate) -> bool:
     return (
         candidate.document_kind == "paper"
         and not candidate.full_text
-        and candidate.access_status in {"paywalled", "abstract_only"}
+        and candidate.access_status in {"paywalled", "abstract_only", "unreadable"}
         and candidate.score >= 0.45
     )
 
@@ -160,7 +160,7 @@ def _render_article_request(candidate: PaperCandidate) -> list[str]:
         meta.append(f"access={candidate.access_status}")
     if meta:
         lines.append(f"  - {' | '.join(meta)}")
-    lines.append("  - why request: the run could only reach a landing page or abstract, so your university access could unlock full-text evidence.")
+    lines.append("  - why request: the run could only reach a blocked, thin, or unreadable page, so your university access could unlock full-text evidence.")
     if candidate.reasons:
         lines.append(f"  - relevance: {', '.join(candidate.reasons[:4])}")
     return lines
