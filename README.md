@@ -18,8 +18,10 @@ The agent does not self-edit code during a run. It only produces search artifact
 
 ## Supported sources
 
+- arXiv
 - OpenAlex
 - Semantic Scholar
+- Google Scholar scraping as an experimental opt-in source
 - DuckDuckGo HTML search for broad web fallback
 
 The lab still prefers structured scholarly metadata first, but it can now fall back to broader web search and read supporting web pages or PDFs for evidence.
@@ -70,6 +72,7 @@ Or without installing the script entrypoint:
 PYTHONPATH=src python3 -m research_lab run \
   --topic "test-time adaptation for large language models" \
   --context-file notes.md \
+  --scholar-per-query 2 \
   --web-per-query 3
 ```
 
@@ -140,6 +143,8 @@ The root `runs/index.sqlite3` file keeps a searchable run history.
 
 The code works without keys, but public endpoints may rate limit more aggressively.
 
+Google Scholar retrieval is intentionally opt-in through `--scholar-per-query`. It uses brittle HTML scraping rather than an official API, so it may fail or get blocked on some runs.
+
 If `pdftotext` is installed on your machine, PDF extraction is significantly better. Without it, the lab falls back to a best-effort plain-text extraction path.
 
 ## Useful command
@@ -150,6 +155,7 @@ research-lab run \
   --context-file notes.md \
   --iterations 2 \
   --per-query 8 \
+  --scholar-per-query 2 \
   --web-per-query 3 \
   --full-text-top-n 5 \
   --llm-rerank-top-n 8 \
@@ -165,6 +171,7 @@ This version is built for robustness first:
 - scholarly search plus general web fallback
 - heuristic reranking that weighs title alignment more strongly
 - accessible full-text and PDF extraction when possible
+- explicit tracking of abstract-only or paywalled papers that may need user retrieval
 - evidence snippets in the final report for argument strengthening
 
 If you set `RESEARCH_LAB_LLM_MODEL`, the lab will also:

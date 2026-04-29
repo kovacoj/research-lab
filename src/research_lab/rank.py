@@ -126,10 +126,10 @@ def _domain_mismatch_penalty(topic_terms: set[str], text_terms: set[str]) -> tup
     reasons: list[str] = []
     if topic_terms & TEXT_TERMS:
         if text_terms & VISUAL_TERMS and not topic_terms & VISUAL_TERMS:
-            penalty += 0.18
+            penalty += 0.32
             reasons.append("visual modality drift")
         if text_terms & ROBOTICS_TERMS and not topic_terms & ROBOTICS_TERMS:
-            penalty += 0.18
+            penalty += 0.32
             reasons.append("robotics modality drift")
         if text_terms & BIOMED_TERMS and not topic_terms & BIOMED_TERMS:
             penalty += 0.06

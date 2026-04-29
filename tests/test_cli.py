@@ -45,6 +45,7 @@ class CliTests(unittest.TestCase):
                 iterations=0,
                 per_query=1,
                 web_per_query=0,
+                scholar_per_query=0,
                 full_text_top_n=0,
                 llm_rerank_top_n=0,
                 llm_summary_top_n=0,

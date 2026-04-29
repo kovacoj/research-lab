@@ -23,6 +23,7 @@ Given a claim, argument, or draft idea, find sources that:
 3. Search for direct support first.
 4. Search for counterexamples or nearby contradictory results.
 5. Surface the best evidence snippets and explain how they help or weaken the argument.
+6. If the best evidence appears to sit behind a paywall, record exactly which paper the user should fetch.
 
 ## Output
 

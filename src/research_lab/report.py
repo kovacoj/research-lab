@@ -50,6 +50,7 @@ def write_run_files(run_dir: Path, artifacts: RunArtifacts) -> None:
     top = artifacts.candidates[: artifacts.brief.top_k]
     high_confidence = [candidate for candidate in top if candidate.score >= 0.35]
     exploratory = [candidate for candidate in top if candidate.score < 0.35]
+    requested_articles = [candidate for candidate in top if _needs_user_article(candidate)]
 
     lines: list[str] = [
         f"# Research Run {artifacts.run_id}",
@@ -74,6 +75,13 @@ def write_run_files(run_dir: Path, artifacts: RunArtifacts) -> None:
             lines.extend(_render_candidate(candidate))
     else:
         lines.append("- No candidates crossed the high-confidence threshold.")
+
+    lines.extend(["", "## Requested Articles From User"])
+    if requested_articles:
+        for candidate in requested_articles[:5]:
+            lines.extend(_render_article_request(candidate))
+    else:
+        lines.append("- No paywalled or abstract-only papers need user retrieval in this run.")
 
     lines.extend(["", "## Lower Confidence Leads"])
     if exploratory:
@@ -110,6 +118,8 @@ def _render_candidate(candidate: PaperCandidate) -> list[str]:
     if candidate.authors:
         meta.append(", ".join(candidate.authors[:3]))
     meta.append(candidate.document_kind)
+    if candidate.access_status and not candidate.full_text:
+        meta.append(f"access={candidate.access_status}")
     meta.append(f"score={candidate.score:.4f}")
     lines.append(f"  - {' | '.join(meta)}")
     if candidate.reasons:
@@ -125,4 +135,32 @@ def _render_candidate(candidate: PaperCandidate) -> list[str]:
             summary = summary[:277] + "..."
         label = "abstract" if candidate.abstract else "summary"
         lines.append(f"  - {label}: {summary}")
+    return lines
+
+
+def _needs_user_article(candidate: PaperCandidate) -> bool:
+    return (
+        candidate.document_kind == "paper"
+        and not candidate.full_text
+        and candidate.access_status in {"paywalled", "abstract_only"}
+        and candidate.score >= 0.45
+    )
+
+
+def _render_article_request(candidate: PaperCandidate) -> list[str]:
+    lines = [f"- [{candidate.title}]({candidate.access_url or candidate.url or candidate.open_access_url or '#'})"]
+    meta = []
+    if candidate.year:
+        meta.append(str(candidate.year))
+    if candidate.venue:
+        meta.append(candidate.venue)
+    if candidate.doi:
+        meta.append(f"doi={candidate.doi}")
+    if candidate.access_status:
+        meta.append(f"access={candidate.access_status}")
+    if meta:
+        lines.append(f"  - {' | '.join(meta)}")
+    lines.append("  - why request: the run could only reach a landing page or abstract, so your university access could unlock full-text evidence.")
+    if candidate.reasons:
+        lines.append(f"  - relevance: {', '.join(candidate.reasons[:4])}")
     return lines

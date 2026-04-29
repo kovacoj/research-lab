@@ -15,6 +15,7 @@ class ResearchBrief:
     iterations: int = 2
     per_query: int = 8
     web_per_query: int = 3
+    scholar_per_query: int = 0
     full_text_top_n: int = 5
     llm_rerank_top_n: int = 8
     llm_summary_top_n: int = 5
@@ -35,6 +36,7 @@ class ResearchBrief:
             iterations=max(_parse_optional_int(payload.get("iterations")) or 2, 0),
             per_query=max(_parse_optional_int(payload.get("per_query")) or 8, 1),
             web_per_query=max(_parse_optional_int(payload.get("web_per_query")) or 3, 0),
+            scholar_per_query=max(_parse_optional_int(payload.get("scholar_per_query")) or 0, 0),
             full_text_top_n=max(_parse_optional_int(payload.get("full_text_top_n")) or 5, 0),
             llm_rerank_top_n=max(_parse_optional_int(payload.get("llm_rerank_top_n")) or 8, 0),
             llm_summary_top_n=max(_parse_optional_int(payload.get("llm_summary_top_n")) or 5, 0),
@@ -77,6 +79,8 @@ class PaperCandidate:
     snippet: str = ""
     full_text: str = ""
     full_text_source: str = ""
+    access_status: str = ""
+    access_url: str = ""
     fields_of_study: list[str] = field(default_factory=list)
     matched_queries: list[str] = field(default_factory=list)
     source_names: list[str] = field(default_factory=list)
@@ -107,6 +111,8 @@ class PaperCandidate:
             snippet=str(payload.get("snippet", "")).strip(),
             full_text=str(payload.get("full_text", "")).strip(),
             full_text_source=str(payload.get("full_text_source", "")).strip(),
+            access_status=str(payload.get("access_status", "")).strip(),
+            access_url=str(payload.get("access_url", "")).strip(),
             fields_of_study=[str(item).strip() for item in payload.get("fields_of_study", []) if str(item).strip()],
             matched_queries=[str(item).strip() for item in payload.get("matched_queries", []) if str(item).strip()],
             source_names=[str(item).strip() for item in payload.get("source_names", []) if str(item).strip()],

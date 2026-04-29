@@ -12,6 +12,7 @@ Find the most relevant papers and articles for a research topic, given the user'
 2. Favor papers with abstracts, stable identifiers, and enough metadata to judge relevance.
 3. Use broad web results as supporting material when they strengthen an argument or point to non-indexed work.
 4. Expand from the strongest early matches instead of blasting many weak queries.
+5. If a strong paper appears relevant but only an abstract or paywalled landing page is reachable, keep it and flag it for user retrieval.
 
 ## Ranking policy
 
@@ -39,6 +40,7 @@ Do not let citation count dominate topic relevance.
 The final report should contain:
 
 - top matches with short reasons
+- a short list of strong papers the user may need to obtain through institutional access
 - lower-confidence but interesting leads
 - search queries that were tried
 - gaps or subtopics that still look underexplored
