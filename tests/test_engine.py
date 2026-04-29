@@ -1,11 +1,13 @@
 from pathlib import Path
 import sys
 import unittest
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from research_lab.engine import _expansion_seed_candidates
-from research_lab.models import PaperCandidate, ResearchBrief
+from research_lab.engine import _expansion_seed_candidates, _search_all_sources
+from research_lab.models import PaperCandidate, QueryRecord, ResearchBrief
+from research_lab.sources import SourceError
 
 
 class EngineTests(unittest.TestCase):
@@ -60,6 +62,27 @@ class EngineTests(unittest.TestCase):
         seeds = _expansion_seed_candidates([web, drift_paper, weak_paper, clean_paper], brief)
 
         self.assertEqual([candidate.title for candidate in seeds], [clean_paper.title])
+
+    def test_search_all_sources_disables_semantic_scholar_after_rate_limit(self) -> None:
+        brief = ResearchBrief(topic="graph neural networks", context="")
+        query = QueryRecord(query="graph neural networks", origin="topic", iteration=0)
+        warnings: list[str] = []
+        source_state = {"semanticscholar_enabled": True}
+
+        with patch("research_lab.engine.search_arxiv", return_value=[]), patch(
+            "research_lab.engine.search_openalex", return_value=[]
+        ), patch("research_lab.engine.search_duckduckgo", return_value=[]), patch(
+            "research_lab.engine.search_google_scholar", return_value=[]
+        ), patch(
+            "research_lab.engine.search_semantic_scholar",
+            side_effect=SourceError("request failed for semantic scholar: HTTP Error 429:"),
+        ) as semantic_mock:
+            _search_all_sources(query, brief, object(), warnings, source_state)
+            _search_all_sources(query, brief, object(), warnings, source_state)
+
+        self.assertEqual(semantic_mock.call_count, 1)
+        self.assertFalse(source_state["semanticscholar_enabled"])
+        self.assertEqual(warnings, ["semantic scholar disabled after rate limit"])
 
 
 if __name__ == "__main__":

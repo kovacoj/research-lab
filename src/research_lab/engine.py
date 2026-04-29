@@ -34,11 +34,12 @@ def execute_run(
     seen_query_strings: set[str] = set()
     pool: list[PaperCandidate] = []
     warnings: list[str] = []
+    source_state = {"semanticscholar_enabled": True}
 
     seed_queries = build_seed_queries(brief)
     for query in seed_queries:
         _add_query(query, all_queries, seen_query_strings)
-        pool.extend(_search_all_sources(query, brief, client, warnings))
+        pool.extend(_search_all_sources(query, brief, client, warnings, source_state))
 
     ranked = rank_candidates(dedupe_candidates(pool), brief)
 
@@ -52,14 +53,14 @@ def execute_run(
         for query in expansion_queries:
             if not _add_query(query, all_queries, seen_query_strings):
                 continue
-            expanded_pool.extend(_search_all_sources(query, brief, client, warnings))
+            expanded_pool.extend(_search_all_sources(query, brief, client, warnings, source_state))
 
         for candidate in seed_candidates[:2]:
-            if candidate.source_id and candidate.source.startswith("semanticscholar"):
+            if source_state["semanticscholar_enabled"] and candidate.source_id and candidate.source.startswith("semanticscholar"):
                 try:
                     references = fetch_semantic_scholar_references(candidate.source_id, brief.per_query, client)
                 except SourceError as exc:
-                    warnings.append(str(exc))
+                    _handle_semantic_scholar_error(exc, warnings, source_state)
                     references = []
                 for reference in references:
                     reference.matched_queries.append(f"references:{candidate.title}")
@@ -95,6 +96,7 @@ def _search_all_sources(
     brief: ResearchBrief,
     client: HttpClient,
     warnings: list[str],
+    source_state: dict[str, bool],
 ) -> list[PaperCandidate]:
     collected: list[PaperCandidate] = []
     try:
@@ -111,13 +113,14 @@ def _search_all_sources(
         collected.extend(openalex_results)
     except SourceError as exc:
         warnings.append(str(exc))
-    try:
-        semantic_results = search_semantic_scholar(query.query, brief.per_query, brief.since_year, client)
-        for candidate in semantic_results:
-            candidate.matched_queries.append(query.query)
-        collected.extend(semantic_results)
-    except SourceError as exc:
-        warnings.append(str(exc))
+    if source_state["semanticscholar_enabled"]:
+        try:
+            semantic_results = search_semantic_scholar(query.query, brief.per_query, brief.since_year, client)
+            for candidate in semantic_results:
+                candidate.matched_queries.append(query.query)
+            collected.extend(semantic_results)
+        except SourceError as exc:
+            _handle_semantic_scholar_error(exc, warnings, source_state)
     try:
         web_results = search_duckduckgo(query.query, brief.web_per_query, client)
         for candidate in web_results:
@@ -133,6 +136,15 @@ def _search_all_sources(
     except SourceError as exc:
         warnings.append(str(exc))
     return collected
+
+
+def _handle_semantic_scholar_error(exc: SourceError, warnings: list[str], source_state: dict[str, bool]) -> None:
+    if "HTTP Error 429" in str(exc):
+        if source_state["semanticscholar_enabled"]:
+            warnings.append("semantic scholar disabled after rate limit")
+        source_state["semanticscholar_enabled"] = False
+        return
+    warnings.append(str(exc))
 
 
 def _add_query(query: QueryRecord, all_queries: list[QueryRecord], seen: set[str]) -> bool:

@@ -11,6 +11,8 @@ VISUAL_TERMS = {"vision", "visual", "image", "images", "video", "clip"}
 ROBOTICS_TERMS = {"robot", "robotic", "robotics", "manipulation", "embodied"}
 BIOMED_TERMS = {"protein", "molecular", "biomedical", "medical", "drug", "clinical"}
 TEXT_TERMS = {"language", "languages", "llm", "llms", "text", "nlp"}
+SURVEY_TERMS = {"survey", "review", "overview"}
+BENCHMARK_TERMS = {"benchmark", "benchmarking", "comparison", "comparative", "evaluation"}
 
 
 def normalize_title(title: str) -> str:
@@ -138,6 +140,27 @@ def _domain_mismatch_penalty(topic_terms: set[str], text_terms: set[str]) -> tup
         penalty += 0.05
         reasons.append("biomed modality drift")
     return penalty, reasons
+
+
+def _context_intent_bonus(candidate: PaperCandidate, brief: ResearchBrief, searchable_lower: str) -> tuple[float, list[str]]:
+    context = brief.context.lower()
+    title_norm = normalize_title(candidate.title)
+    bonus = 0.0
+    reasons: list[str] = []
+
+    if any(term in context for term in SURVEY_TERMS) and any(term in title_norm for term in SURVEY_TERMS):
+        bonus += 0.14
+        reasons.append("matches survey intent")
+
+    if any(term in context for term in BENCHMARK_TERMS) and any(term in searchable_lower for term in BENCHMARK_TERMS):
+        bonus += 0.1
+        reasons.append("matches benchmark intent")
+
+    if "foundational" in context and candidate.citation_count >= 100:
+        bonus += 0.08
+        reasons.append("matches foundational intent")
+
+    return bonus, reasons
 
 
 def extract_evidence_sentences(text: str, brief: ResearchBrief, limit: int = 3) -> list[str]:
@@ -315,6 +338,10 @@ def score_candidate(candidate: PaperCandidate, brief: ResearchBrief) -> float:
     mismatch_penalty, mismatch_reasons = _domain_mismatch_penalty(topic_terms, text_terms)
     score -= mismatch_penalty
     reasons.extend(mismatch_reasons)
+
+    intent_bonus, intent_reasons = _context_intent_bonus(candidate, brief, searchable_lower)
+    score += intent_bonus
+    reasons.extend(intent_reasons)
 
     candidate.score = round(score, 4)
     candidate.reasons = reasons
