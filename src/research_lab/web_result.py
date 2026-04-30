@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 from research_lab.models import PaperCandidate
 
 
@@ -129,3 +131,17 @@ CATEGORY_LABELS: dict[str, str] = {
     "engineering_explainer": "Engineering Explainers & Tutorials",
     "general_web": "General Web Sources",
 }
+
+
+@dataclass(slots=True)
+class WebResultAssembly:
+    useful_sources: list[PaperCandidate]
+    grouped_sources: dict[str, list[PaperCandidate]]
+
+
+def assemble_web_results(candidates: list[PaperCandidate], limit: int = 6) -> WebResultAssembly:
+    useful_sources = collect_useful_web_sources(candidates, limit=limit)
+    return WebResultAssembly(
+        useful_sources=useful_sources,
+        grouped_sources=group_web_sources_by_category(useful_sources),
+    )
