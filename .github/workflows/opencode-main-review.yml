@@ -1,9 +1,16 @@
 name: opencode-main-review
 
 on:
-  push:
-    branches:
-      - main
+  workflow_dispatch:
+    inputs:
+      before_sha:
+        description: "Commit before the push"
+        required: true
+        type: string
+      after_sha:
+        description: "Commit after the push"
+        required: true
+        type: string
 
 jobs:
   review:
@@ -23,6 +30,7 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
+          ref: ${{ inputs.after_sha }}
 
       - name: Run OpenCode review
         uses: anomalyco/opencode/github@latest
@@ -41,7 +49,7 @@ jobs:
           share: false
           use_github_token: true
           prompt: |
-            Review the changes introduced on `main` from `${{ github.event.before }}` to `${{ github.sha }}`.
+            Review the changes introduced on `main` from `${{ inputs.before_sha }}` to `${{ inputs.after_sha }}`.
 
             Scope:
             - Review the pushed diff for correctness bugs, regressions, security issues, broken behavior, maintainability hazards, and missing tests that could hide a defect.
@@ -50,17 +58,17 @@ jobs:
 
             Outcome:
             - If you find no material problem, finish without creating any issue.
-            - If you find a material problem, first check whether an open issue already exists with title prefix `[auto-review]` and commit SHA `${{ github.sha }}`.
+            - If you find a material problem, first check whether an open issue already exists with title prefix `[auto-review]` and commit SHA `${{ inputs.after_sha }}`.
             - If no such issue exists, create exactly one GitHub issue.
             - The issue title must start with `[auto-review]`.
-            - The issue body must include commit SHA `${{ github.sha }}`, affected files, the problem, why it matters, and a suggested fix.
+            - The issue body must include commit SHA `${{ inputs.after_sha }}`, affected files, the problem, why it matters, and a suggested fix.
             - Do not create more than one issue for this workflow run.
 
       - name: Fail when a review issue exists
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          query="repo:${{ github.repository }} is:issue is:open in:title,body \"[auto-review]\" \"${{ github.sha }}\""
+          query="repo:${{ github.repository }} is:issue is:open in:title,body \"[auto-review]\" \"${{ inputs.after_sha }}\""
           count="$(gh api search/issues -f q="$query" --jq '.total_count')"
           if [ "$count" -gt 0 ]; then
             echo "OpenCode found a material problem and created an issue."

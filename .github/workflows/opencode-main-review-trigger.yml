@@ -1,0 +1,81 @@
+name: opencode-main-review-trigger
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  trigger-review:
+    runs-on: ubuntu-latest
+
+    permissions:
+      actions: write
+      contents: read
+
+    steps:
+      - name: Dispatch and wait for OpenCode review
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const workflow_id = "opencode-main-review.yml";
+            const beforeSha = context.payload.before;
+            const afterSha = context.sha;
+            const startedAt = Date.now();
+
+            await github.rest.actions.createWorkflowDispatch({
+              owner,
+              repo,
+              workflow_id,
+              ref: "main",
+              inputs: {
+                before_sha: beforeSha,
+                after_sha: afterSha,
+              },
+            });
+
+            let runId = null;
+            for (let attempt = 0; attempt < 45; attempt += 1) {
+              await sleep(10000);
+              const { data } = await github.rest.actions.listWorkflowRuns({
+                owner,
+                repo,
+                workflow_id,
+                event: "workflow_dispatch",
+                per_page: 20,
+              });
+              const run = data.workflow_runs.find((item) => {
+                return item.head_sha === afterSha && new Date(item.created_at).getTime() >= startedAt - 60000;
+              });
+              if (run) {
+                runId = run.id;
+                core.info(`Found review workflow run ${runId}`);
+                break;
+              }
+            }
+
+            if (!runId) {
+              core.setFailed("Timed out waiting for dispatched review workflow to appear.");
+              return;
+            }
+
+            for (let attempt = 0; attempt < 180; attempt += 1) {
+              await sleep(10000);
+              const { data: run } = await github.rest.actions.getWorkflowRun({
+                owner,
+                repo,
+                run_id: runId,
+              });
+              core.info(`Review workflow status: ${run.status}, conclusion: ${run.conclusion}`);
+              if (run.status === "completed") {
+                if (run.conclusion !== "success") {
+                  core.setFailed(`OpenCode review reported ${run.conclusion}.`);
+                }
+                return;
+              }
+            }
+
+            core.setFailed("Timed out waiting for OpenCode review workflow to finish.");
