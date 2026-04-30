@@ -60,7 +60,10 @@ def parse_brief_markdown(text: str) -> ResearchBrief:
 
     topic = str(payload.get("topic", "")).strip()
     if not topic:
-        raise ValueError("brief markdown is missing a 'Topic' section")
+        raise ValueError(
+            "brief markdown is missing a 'Topic' section "
+            "(use a Markdown heading like '# Topic' or a label line like 'Topic:')"
+        )
 
     return ResearchBrief.from_dict(payload)
 
@@ -87,6 +90,11 @@ def _parse_sections(text: str) -> dict[str, str]:
             current = heading
             sections.setdefault(current, [])
             continue
+        label = _parse_label(line)
+        if label is not None:
+            current = label
+            sections.setdefault(current, [])
+            continue
         if current is None:
             continue
         sections[current].append(raw_line)
@@ -99,6 +107,17 @@ def _parse_heading(line: str) -> str | None:
         return None
     heading = match.group(1).strip().lower()
     return re.sub(r"\s+", " ", heading)
+
+
+def _parse_label(line: str) -> str | None:
+    match = re.match(r"^([A-Za-z][A-Za-z0-9 :\-]+?):\s*$", line.strip())
+    if not match:
+        return None
+    label = match.group(1).strip().lower()
+    label = re.sub(r"\s+", " ", label)
+    if label not in SECTION_ALIASES:
+        return None
+    return label
 
 
 def _normalize_block(text: str) -> str:
