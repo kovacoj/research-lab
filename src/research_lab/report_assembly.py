@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from research_lab.enrichment import needs_user_article
 from research_lab.final_ranking import FinalRanking, group_final_ranking
 from research_lab.models import EnrichedCandidate, PaperCandidate, RunArtifacts
-from research_lab.web_result import collect_useful_web_sources, group_web_sources_by_category
+from research_lab.web_result import assemble_web_results
 
 
 @dataclass(slots=True)
@@ -24,14 +24,14 @@ def assemble_report(artifacts: RunArtifacts) -> ReportAssembly:
         artifacts.brief,
     )
     top = _to_paper_candidates(ranking.ranked[: artifacts.brief.top_k])
-    useful_web_sources = collect_useful_web_sources(artifacts.candidates)
+    web_results = assemble_web_results(artifacts.candidates)
     return ReportAssembly(
         top=top,
         high_confidence=_to_paper_candidates(ranking.high_confidence),
         exploratory=_to_paper_candidates(ranking.exploratory),
         broad_intent_matches=_to_paper_candidates(ranking.broad_intent),
         requested_articles=[candidate for candidate in top if needs_user_article(candidate)],
-        useful_web_groups=group_web_sources_by_category(useful_web_sources),
+        useful_web_groups=web_results.grouped_sources,
     )
 
 
