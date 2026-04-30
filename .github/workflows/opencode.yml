@@ -1,3 +1,5 @@
+# resource: https://opencode.ai/docs/github/
+
 name: opencode
 
 on:
@@ -19,6 +21,9 @@ jobs:
 
     permissions:
       id-token: write
+      # contents: write
+      # pull-requests: write
+      # issues: write
 
     steps:
       - name: Checkout repository
