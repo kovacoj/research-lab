@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 from research_lab.models import PaperCandidate, RunArtifacts
+from research_lab.web_result import CATEGORY_LABELS, collect_useful_web_sources, group_web_sources_by_category
 
 
 def write_json(path: Path, payload: object) -> None:
@@ -52,7 +53,8 @@ def write_run_files(run_dir: Path, artifacts: RunArtifacts) -> None:
     exploratory = [candidate for candidate in top if candidate.score < 0.35]
     requested_articles = [candidate for candidate in top if _needs_user_article(candidate)]
     broad_intent_matches = [candidate for candidate in top if _matches_broad_intent(candidate)]
-    useful_web_sources = [candidate for candidate in artifacts.candidates if candidate.document_kind == "web"]
+    useful_web_sources = collect_useful_web_sources(artifacts.candidates)
+    web_groups = group_web_sources_by_category(useful_web_sources)
 
     lines: list[str] = [
         f"# Research Run {artifacts.run_id}",
@@ -77,8 +79,14 @@ def write_run_files(run_dir: Path, artifacts: RunArtifacts) -> None:
             lines.extend(_render_candidate(candidate))
     if useful_web_sources:
         lines.extend(["", "## Useful Web Sources"])
-        for candidate in useful_web_sources[:4]:
-            lines.extend(_render_candidate(candidate))
+        for category in ("survey_support", "engineering_explainer", "general_web"):
+            group = web_groups.get(category, [])
+            if not group:
+                continue
+            label = CATEGORY_LABELS.get(category, category)
+            lines.extend(["", f"### {label}"])
+            for candidate in group[:4]:
+                lines.extend(_render_candidate(candidate))
     lines.extend(["", "## High Confidence Matches"])
     if high_confidence:
         for candidate in high_confidence:
