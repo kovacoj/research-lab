@@ -5,7 +5,7 @@ from pathlib import Path
 
 from research_lab.enrichment import enrich_candidates
 from research_lab.identity import candidates_match
-from research_lab.llm import LlmClient, LlmError, rerank_candidates_with_llm, summarize_candidates_with_llm
+from research_lab.final_ranking import finalize_ranking
 from research_lab.models import EnrichedCandidate, PaperCandidate, QueryRecord, ResearchBrief, RetrievalCandidate, RunArtifacts, ScoredCandidate
 from research_lab.planner import build_expansion_queries, build_seed_queries
 from research_lab.rank import dedupe_candidates, rank_candidates
@@ -62,17 +62,17 @@ def execute_run(
     deduped_pool = dedupe_candidates(pool)
     ranked = rank_candidates(deduped_pool, brief)
     final_ranked = [EnrichedCandidate.from_paper_candidate(candidate) for candidate in _merge_scored_candidates(ranked, deduped_pool)]
-    synthesis = _apply_llm_layer(final_ranked, brief, warnings)
+    final_ranking = finalize_ranking(final_ranked, brief, warnings)
 
     artifacts = RunArtifacts.create(
         run_id=run_id,
         run_dir=str(run_dir),
         brief=brief,
         queries=all_queries,
-        candidates=[candidate.to_paper_candidate() for candidate in final_ranked],
+        candidates=[candidate.to_paper_candidate() for candidate in final_ranking.ranked],
         program_text=program_text,
         warnings=sorted(set(warnings)),
-        synthesis=synthesis,
+        synthesis=final_ranking.synthesis,
     )
     write_run_files(run_dir, artifacts)
     init_db(db_path)
@@ -138,33 +138,3 @@ def _must_include_hits(candidate: ScoredCandidate, brief: ResearchBrief) -> int:
     searchable_text = f"{candidate.title} {candidate.abstract} {candidate.snippet}".lower()
     return sum(1 for term in brief.must_include if term.lower() in searchable_text)
 
-
-def _apply_llm_layer(ranked: list[EnrichedCandidate], brief: ResearchBrief, warnings: list[str]) -> str:
-    client = LlmClient.from_env()
-    if client is None:
-        return ""
-
-    rerank_targets = ranked[: brief.llm_rerank_top_n]
-    if rerank_targets:
-        try:
-            reranked = rerank_candidates_with_llm(client, brief, rerank_targets)
-            for index, candidate in enumerate(rerank_targets, start=1):
-                candidate_id = f"c{index}"
-                result = reranked.get(candidate_id)
-                if result is None:
-                    continue
-                candidate.llm_score = result["score"]
-                candidate.llm_reasons = result["reasons"]
-                candidate.score = round(candidate.score + max(min(result["score"], 1.0), 0.0) * 0.25, 4)
-            ranked.sort(key=lambda item: (item.score, item.citation_count, item.year or 0), reverse=True)
-        except LlmError as exc:
-            warnings.append(str(exc))
-
-    summary_targets = ranked[: brief.llm_summary_top_n]
-    if not summary_targets:
-        return ""
-    try:
-        return summarize_candidates_with_llm(client, brief, summary_targets)
-    except LlmError as exc:
-        warnings.append(str(exc))
-        return ""
