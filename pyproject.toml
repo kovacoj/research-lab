@@ -10,7 +10,7 @@ dependencies = []
 research-lab = "research_lab.cli:main"
 
 [build-system]
-requires = ["setuptools>=68"]
+requires = ["setuptools>=82.0.1"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
