@@ -51,3 +51,29 @@ When explicitly asked to auto-merge a PR after checks pass, use:
 `gh pr merge --auto --squash --delete-branch`
 
 Only do this when the user explicitly asks for auto-merge or merge.
+
+When squash-merging, use an explicit Conventional Commit squash subject, for example:
+
+`gh pr merge --auto --squash --delete-branch --subject "fix(parser): accept label-style brief sections" --body "Closes #12"`
+
+## Commit authorship and commit message hygiene
+
+For commits created by OpenCode:
+
+1. The commit author should be `opencode-agent[bot]`.
+2. Do not add `Co-authored-by` trailers unless explicitly requested.
+3. Never add `Co-authored-by: opencode-agent[bot] ...` when OpenCode is already the commit author.
+4. Never use personal email addresses in commit messages or co-author trailers.
+5. If a human co-author is explicitly requested, use this canonical GitHub noreply identity only:
+
+   `Co-authored-by: Ján Kováčovský <56980327+kovacoj@users.noreply.github.com>`
+
+6. Do not include duplicate co-author trailers for the same person.
+7. Use clean Conventional Commit subjects:
+
+   `<type>(<scope>): <summary>`
+
+8. The commit body should contain only useful context, such as:
+   - what changed
+   - why it changed
+   - `Closes #<issue-number>` when applicable

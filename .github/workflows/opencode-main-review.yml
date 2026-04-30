@@ -35,7 +35,6 @@ jobs:
       - name: Run OpenCode review
         uses: anomalyco/opencode/github@latest
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SIEMENS_LLM_API_KEY: ${{ secrets.SIEMENS_LLM_API_KEY }}
           OPENCODE_CONFIG_CONTENT: |
             {
@@ -47,7 +46,6 @@ jobs:
         with:
           model: siemens/glm-5
           share: false
-          use_github_token: true
           prompt: |
             Review the changes introduced on `main` from `${{ inputs.before_sha }}` to `${{ inputs.after_sha }}`.
 
