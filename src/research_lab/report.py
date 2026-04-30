@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from research_lab.enrichment import needs_user_article
 from research_lab.models import PaperCandidate, RunArtifacts
 from research_lab.web_result import CATEGORY_LABELS, collect_useful_web_sources, group_web_sources_by_category
 
@@ -51,7 +52,7 @@ def write_run_files(run_dir: Path, artifacts: RunArtifacts) -> None:
     top = artifacts.candidates[: artifacts.brief.top_k]
     high_confidence = [candidate for candidate in top if candidate.score >= 0.35]
     exploratory = [candidate for candidate in top if candidate.score < 0.35]
-    requested_articles = [candidate for candidate in top if _needs_user_article(candidate)]
+    requested_articles = [candidate for candidate in top if needs_user_article(candidate)]
     broad_intent_matches = [candidate for candidate in top if _matches_broad_intent(candidate)]
     useful_web_sources = collect_useful_web_sources(artifacts.candidates)
     web_groups = group_web_sources_by_category(useful_web_sources)
@@ -154,15 +155,6 @@ def _render_candidate(candidate: PaperCandidate) -> list[str]:
         label = "abstract" if candidate.abstract else "summary"
         lines.append(f"  - {label}: {summary}")
     return lines
-
-
-def _needs_user_article(candidate: PaperCandidate) -> bool:
-    return (
-        candidate.document_kind == "paper"
-        and not candidate.full_text
-        and candidate.access_status in {"paywalled", "abstract_only", "unreadable"}
-        and candidate.score >= 0.45
-    )
 
 
 def _matches_broad_intent(candidate: PaperCandidate) -> bool:

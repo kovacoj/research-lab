@@ -4,8 +4,9 @@ import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
+from research_lab.enrichment import extract_evidence_sentences
 from research_lab.models import PaperCandidate, ResearchBrief
-from research_lab.rank import dedupe_candidates, extract_evidence_sentences, rank_candidates
+from research_lab.rank import dedupe_candidates, rank_candidates
 
 
 class RankTests(unittest.TestCase):

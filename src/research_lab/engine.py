@@ -3,14 +3,15 @@ from __future__ import annotations
 from collections import Counter
 from pathlib import Path
 
+from research_lab.enrichment import enrich_candidate
 from research_lab.identity import candidates_match
 from research_lab.llm import LlmClient, LlmError, rerank_candidates_with_llm, summarize_candidates_with_llm
 from research_lab.models import EnrichedCandidate, PaperCandidate, QueryRecord, ResearchBrief, RetrievalCandidate, RunArtifacts, ScoredCandidate
 from research_lab.planner import build_expansion_queries, build_seed_queries
-from research_lab.rank import dedupe_candidates, extract_evidence_sentences, rank_candidates
+from research_lab.rank import dedupe_candidates, rank_candidates
 from research_lab.report import write_run_files
 from research_lab.retrieval import RetrievalPolicy
-from research_lab.sources import HttpClient, SourceError, fetch_candidate_full_text
+from research_lab.sources import HttpClient
 from research_lab.store import init_db, record_run
 
 
@@ -145,11 +146,7 @@ def _enrich_top_candidates(
 ) -> list[EnrichedCandidate]:
     enriched: list[EnrichedCandidate] = []
     for candidate in ranked:
-        try:
-            result = fetch_candidate_full_text(candidate, client)
-        except SourceError as exc:
-            warnings.append(str(exc))
-            continue
+        result = enrich_candidate(candidate, brief, client)
         enriched_candidate = EnrichedCandidate.from_paper_candidate(candidate.to_paper_candidate())
         enriched_candidate.access_status = result.access_status
         enriched_candidate.access_url = result.access_url
@@ -160,7 +157,7 @@ def _enrich_top_candidates(
             continue
         enriched_candidate.full_text = result.text
         enriched_candidate.full_text_source = result.source
-        enriched_candidate.evidence = extract_evidence_sentences(result.text, brief)
+        enriched_candidate.evidence = list(result.evidence)
         enriched.append(enriched_candidate)
     return enriched
 
