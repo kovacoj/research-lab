@@ -184,16 +184,16 @@ If the LLM call fails or is not configured, the run still completes with heurist
 
 ## GitHub Agent
 
-This repo also includes a GitHub Actions workflow at `.github/workflows/opencode.yml` that lets OpenCode respond to GitHub comments.
+This repo includes a GitHub Actions workflow at `.github/workflows/opencode.yml` that lets OpenCode respond to GitHub comments.
 
-It can handle:
+It is triggered by:
 
-- issue comments
-- PR conversation comments
-- inline PR review comments in `Files changed`
-- submitted PR reviews with a body
+- **Issue comments** – comment on any issue or PR conversation
+- **PR review comments** – comment on specific code lines in a PR's `Files changed` tab
 
-Typical commands are:
+Typing `/oc` or `/opencode` in a new comment on either of those surfaces will start the agent. Editing an old comment will not trigger the workflow.
+
+Typical commands:
 
 ```text
 /opencode explain this issue
@@ -202,15 +202,16 @@ Typical commands are:
 /oc address these review comments
 ```
 
-The workflow is configured to use `GITHUB_TOKEN`, so the agent can reply on issues and PRs, push commits, and open or update PRs when the action decides that is appropriate.
+The workflow authenticates via the [OpenCode GitHub App](https://github.com/apps/opencode-agent). Install the app on the target repository before using the workflow. The agent can reply on issues and PRs, push commits, and open or update PRs when the action decides that is appropriate.
 
-To use it, make sure:
+To set it up:
 
-- the `opencode` workflow exists in `.github/workflows/opencode.yml`
-- the `SIEMENS_LLM_API_KEY` secret is configured in GitHub Actions secrets
-- GitHub Actions are enabled for the repository
+1. Install the **OpenCode Agent** GitHub App from <https://github.com/apps/opencode-agent> and grant it access to the repository.
+2. Ensure the `opencode` workflow exists in `.github/workflows/opencode.yml`.
+3. Configure the `SIEMENS_LLM_API_KEY` secret in GitHub Actions secrets.
+4. Enable GitHub Actions for the repository.
 
-Then create a new GitHub comment containing `/oc` or `/opencode`. Editing an old comment will not trigger the workflow.
+Then create a new comment containing `/oc` or `/opencode`.
 
 ## OpenCode Prompts
 
