@@ -4,7 +4,8 @@ import json
 from pathlib import Path
 
 from research_lab.enrichment import needs_user_article
-from research_lab.models import PaperCandidate, RunArtifacts
+from research_lab.final_ranking import group_final_ranking
+from research_lab.models import EnrichedCandidate, PaperCandidate, RunArtifacts
 from research_lab.web_result import CATEGORY_LABELS, collect_useful_web_sources, group_web_sources_by_category
 
 
@@ -49,11 +50,12 @@ def write_run_files(run_dir: Path, artifacts: RunArtifacts) -> None:
     bib = "\n".join(candidate_to_bibtex(candidate) for candidate in artifacts.candidates[: artifacts.brief.top_k])
     (run_dir / "references.bib").write_text(bib, encoding="utf-8")
 
-    top = artifacts.candidates[: artifacts.brief.top_k]
-    high_confidence = [candidate for candidate in top if candidate.score >= 0.35]
-    exploratory = [candidate for candidate in top if candidate.score < 0.35]
+    ranking = group_final_ranking([EnrichedCandidate.from_paper_candidate(candidate) for candidate in artifacts.candidates], artifacts.brief)
+    top = [candidate.to_paper_candidate() for candidate in ranking.ranked[: artifacts.brief.top_k]]
+    high_confidence = [candidate.to_paper_candidate() for candidate in ranking.high_confidence]
+    exploratory = [candidate.to_paper_candidate() for candidate in ranking.exploratory]
     requested_articles = [candidate for candidate in top if needs_user_article(candidate)]
-    broad_intent_matches = [candidate for candidate in top if _matches_broad_intent(candidate)]
+    broad_intent_matches = [candidate.to_paper_candidate() for candidate in ranking.broad_intent]
     useful_web_sources = collect_useful_web_sources(artifacts.candidates)
     web_groups = group_web_sources_by_category(useful_web_sources)
 
@@ -155,15 +157,6 @@ def _render_candidate(candidate: PaperCandidate) -> list[str]:
         label = "abstract" if candidate.abstract else "summary"
         lines.append(f"  - {label}: {summary}")
     return lines
-
-
-def _matches_broad_intent(candidate: PaperCandidate) -> bool:
-    broad_intent_flags = {
-        "survey_intent",
-        "benchmark_intent",
-        "foundational_intent",
-    }
-    return any(flag in broad_intent_flags for flag in candidate.flags)
 
 
 def _render_article_request(candidate: PaperCandidate) -> list[str]:
