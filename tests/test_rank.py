@@ -131,6 +131,7 @@ class RankTests(unittest.TestCase):
         ranked = rank_candidates([broad, precise], brief)
 
         self.assertEqual(ranked[0].title, precise.title)
+        self.assertIn("drift", broad.flags)
 
     def test_extract_evidence_sentences_prefers_relevant_claims(self) -> None:
         brief = ResearchBrief(topic="prompt tuning for language models", context="I need evidence about inference-time adaptation.")
@@ -247,6 +248,8 @@ class RankTests(unittest.TestCase):
         ranked = rank_candidates([method_paper, review_paper], brief)
 
         self.assertEqual(ranked[0].title, review_paper.title)
+        self.assertIn("survey_intent", review_paper.flags)
+        self.assertIn("foundational_intent", review_paper.flags)
 
     def test_rank_prefers_foundational_comparison_when_context_is_mixed_intent(self) -> None:
         brief = ResearchBrief(
@@ -279,6 +282,23 @@ class RankTests(unittest.TestCase):
         ranked = rank_candidates([exact_method, foundational_comparison], brief)
 
         self.assertEqual(ranked[0].title, foundational_comparison.title)
+        self.assertIn("benchmark_intent", foundational_comparison.flags)
+        self.assertIn("foundational_intent", foundational_comparison.flags)
+
+    def test_rank_sets_weak_title_flag(self) -> None:
+        brief = ResearchBrief(topic="test-time adaptation for language models", context="")
+        candidate = PaperCandidate(
+            title="Prompt Tuning Methods",
+            abstract="We study test-time adaptation for language models.",
+            url="https://example.com/prompt",
+            source="openalex",
+            source_id="oa:prompt",
+            source_names=["openalex"],
+        )
+
+        rank_candidates([candidate], brief)
+
+        self.assertIn("weak_title", candidate.flags)
 
 
 if __name__ == "__main__":

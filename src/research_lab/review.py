@@ -5,6 +5,7 @@ import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
 
+from research_lab.identity import candidates_match
 from research_lab.models import PaperCandidate, ResearchBrief
 
 
@@ -175,30 +176,9 @@ def _find_matching_candidate_index(
     for index, existing in enumerate(pool):
         if index in used_indices:
             continue
-        if _candidates_match(candidate, existing):
+        if candidates_match(candidate, existing):
             return index
     return None
-
-
-def _candidates_match(left: PaperCandidate, right: PaperCandidate) -> bool:
-    if left.doi and right.doi and left.doi.lower() == right.doi.lower():
-        return True
-    left_title = _normalize_title(left.title)
-    right_title = _normalize_title(right.title)
-    if left_title == right_title:
-        return True
-    shorter, longer = sorted([left_title, right_title], key=len)
-    if len(shorter.split()) >= 5 and longer.startswith(shorter):
-        return True
-    left_terms = set(left_title.split())
-    right_terms = set(right_title.split())
-    minimum = min(len(left_terms), len(right_terms))
-    return minimum >= 5 and len(left_terms & right_terms) / minimum >= 0.8
-
-
-def _normalize_title(title: str) -> str:
-    cleaned = "".join(ch.lower() if ch.isalnum() else " " for ch in title)
-    return " ".join(cleaned.split())
 
 
 def _render_candidate_line(candidate: PaperCandidate) -> str:

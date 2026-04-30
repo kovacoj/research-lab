@@ -87,6 +87,7 @@ class PaperCandidate:
     score: float = 0.0
     llm_score: float | None = None
     reasons: list[str] = field(default_factory=list)
+    flags: list[str] = field(default_factory=list)
     llm_reasons: list[str] = field(default_factory=list)
     evidence: list[str] = field(default_factory=list)
 
@@ -119,8 +120,163 @@ class PaperCandidate:
             score=float(payload.get("score", 0.0) or 0.0),
             llm_score=float(payload["llm_score"]) if payload.get("llm_score") is not None else None,
             reasons=[str(item).strip() for item in payload.get("reasons", []) if str(item).strip()],
+            flags=[str(item).strip() for item in payload.get("flags", []) if str(item).strip()],
             llm_reasons=[str(item).strip() for item in payload.get("llm_reasons", []) if str(item).strip()],
             evidence=[str(item).strip() for item in payload.get("evidence", []) if str(item).strip()],
+        )
+
+
+@dataclass(slots=True)
+class RetrievalCandidate:
+    title: str
+    abstract: str
+    url: str
+    source: str
+    source_id: str
+    authors: list[str] = field(default_factory=list)
+    year: int | None = None
+    venue: str = ""
+    doi: str = ""
+    citation_count: int = 0
+    open_access_url: str = ""
+    document_kind: str = "paper"
+    snippet: str = ""
+    fields_of_study: list[str] = field(default_factory=list)
+    matched_queries: list[str] = field(default_factory=list)
+    source_names: list[str] = field(default_factory=list)
+
+    def to_paper_candidate(self) -> PaperCandidate:
+        return PaperCandidate(
+            title=self.title,
+            abstract=self.abstract,
+            url=self.url,
+            source=self.source,
+            source_id=self.source_id,
+            authors=list(self.authors),
+            year=self.year,
+            venue=self.venue,
+            doi=self.doi,
+            citation_count=self.citation_count,
+            open_access_url=self.open_access_url,
+            document_kind=self.document_kind,
+            snippet=self.snippet,
+            fields_of_study=list(self.fields_of_study),
+            matched_queries=list(self.matched_queries),
+            source_names=list(self.source_names),
+        )
+
+    @classmethod
+    def from_paper_candidate(cls, candidate: PaperCandidate) -> "RetrievalCandidate":
+        return cls(
+            title=candidate.title,
+            abstract=candidate.abstract,
+            url=candidate.url,
+            source=candidate.source,
+            source_id=candidate.source_id,
+            authors=list(candidate.authors),
+            year=candidate.year,
+            venue=candidate.venue,
+            doi=candidate.doi,
+            citation_count=candidate.citation_count,
+            open_access_url=candidate.open_access_url,
+            document_kind=candidate.document_kind,
+            snippet=candidate.snippet,
+            fields_of_study=list(candidate.fields_of_study),
+            matched_queries=list(candidate.matched_queries),
+            source_names=list(candidate.source_names),
+        )
+
+
+@dataclass(slots=True)
+class ScoredCandidate(RetrievalCandidate):
+    score: float = 0.0
+    reasons: list[str] = field(default_factory=list)
+    flags: list[str] = field(default_factory=list)
+
+    def to_paper_candidate(self) -> PaperCandidate:
+        candidate = super(ScoredCandidate, self).to_paper_candidate()
+        candidate.score = self.score
+        candidate.reasons = list(self.reasons)
+        candidate.flags = list(self.flags)
+        return candidate
+
+    @classmethod
+    def from_paper_candidate(cls, candidate: PaperCandidate) -> "ScoredCandidate":
+        retrieval = RetrievalCandidate.from_paper_candidate(candidate)
+        return cls(
+            title=retrieval.title,
+            abstract=retrieval.abstract,
+            url=retrieval.url,
+            source=retrieval.source,
+            source_id=retrieval.source_id,
+            authors=list(retrieval.authors),
+            year=retrieval.year,
+            venue=retrieval.venue,
+            doi=retrieval.doi,
+            citation_count=retrieval.citation_count,
+            open_access_url=retrieval.open_access_url,
+            document_kind=retrieval.document_kind,
+            snippet=retrieval.snippet,
+            fields_of_study=list(retrieval.fields_of_study),
+            matched_queries=list(retrieval.matched_queries),
+            source_names=list(retrieval.source_names),
+            score=candidate.score,
+            reasons=list(candidate.reasons),
+            flags=list(candidate.flags),
+        )
+
+
+@dataclass(slots=True)
+class EnrichedCandidate(ScoredCandidate):
+    full_text: str = ""
+    full_text_source: str = ""
+    access_status: str = ""
+    access_url: str = ""
+    evidence: list[str] = field(default_factory=list)
+    llm_score: float | None = None
+    llm_reasons: list[str] = field(default_factory=list)
+
+    def to_paper_candidate(self) -> PaperCandidate:
+        candidate = super(EnrichedCandidate, self).to_paper_candidate()
+        candidate.full_text = self.full_text
+        candidate.full_text_source = self.full_text_source
+        candidate.access_status = self.access_status
+        candidate.access_url = self.access_url
+        candidate.evidence = list(self.evidence)
+        candidate.llm_score = self.llm_score
+        candidate.llm_reasons = list(self.llm_reasons)
+        return candidate
+
+    @classmethod
+    def from_paper_candidate(cls, candidate: PaperCandidate) -> "EnrichedCandidate":
+        scored = ScoredCandidate.from_paper_candidate(candidate)
+        return cls(
+            title=scored.title,
+            abstract=scored.abstract,
+            url=scored.url,
+            source=scored.source,
+            source_id=scored.source_id,
+            authors=list(scored.authors),
+            year=scored.year,
+            venue=scored.venue,
+            doi=scored.doi,
+            citation_count=scored.citation_count,
+            open_access_url=scored.open_access_url,
+            document_kind=scored.document_kind,
+            snippet=scored.snippet,
+            fields_of_study=list(scored.fields_of_study),
+            matched_queries=list(scored.matched_queries),
+            source_names=list(scored.source_names),
+            score=scored.score,
+            reasons=list(scored.reasons),
+            flags=list(scored.flags),
+            full_text=candidate.full_text,
+            full_text_source=candidate.full_text_source,
+            access_status=candidate.access_status,
+            access_url=candidate.access_url,
+            evidence=list(candidate.evidence),
+            llm_score=candidate.llm_score,
+            llm_reasons=list(candidate.llm_reasons),
         )
 
 

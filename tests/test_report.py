@@ -79,6 +79,7 @@ class ReportTests(unittest.TestCase):
                 source_names=["openalex"],
                 score=0.88,
                 reasons=["topic overlap 3/3", "matches survey intent", "matches foundational intent"],
+                flags=["survey_intent", "foundational_intent"],
             )
             artifacts = RunArtifacts.create("run-3", str(run_dir), brief, [], [candidate], "program")
 

@@ -34,6 +34,7 @@ class EngineTests(unittest.TestCase):
             source_names=["openalex"],
             score=1.1,
             reasons=["visual modality drift"],
+            flags=["drift"],
         )
         clean_paper = PaperCandidate(
             title="Mixed Precision Training",
@@ -57,11 +58,32 @@ class EngineTests(unittest.TestCase):
             source_names=["openalex"],
             score=1.0,
             reasons=["topic overlap 4/4"],
+            flags=["weak_title"],
         )
 
         seeds = _expansion_seed_candidates([web, drift_paper, weak_paper, clean_paper], brief)
 
         self.assertEqual([candidate.title for candidate in seeds], [clean_paper.title])
+
+    def test_expansion_seed_candidates_uses_scored_fields_only(self) -> None:
+        brief = ResearchBrief(topic="mixed precision training", context="", must_include=["mixed precision"])
+        candidate = PaperCandidate(
+            title="Mixed Precision Training",
+            abstract="A direct paper about mixed precision.",
+            url="https://example.com/paper",
+            source="openalex",
+            source_id="oa:paper-2",
+            document_kind="paper",
+            source_names=["openalex"],
+            score=0.9,
+            reasons=["topic overlap 3/3"],
+        )
+
+        scored = candidate
+        scored.flags = []
+        seeds = _expansion_seed_candidates([scored], brief)
+
+        self.assertEqual([item.title for item in seeds], [candidate.title])
 
     def test_search_all_sources_disables_semantic_scholar_after_rate_limit(self) -> None:
         brief = ResearchBrief(topic="graph neural networks", context="")
