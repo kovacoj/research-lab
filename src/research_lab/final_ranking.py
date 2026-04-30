@@ -3,20 +3,20 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from research_lab.llm import LlmClient, LlmError, rerank_candidates_with_llm, summarize_candidates_with_llm
-from research_lab.models import EnrichedCandidate, ResearchBrief
+from research_lab.models import Candidate, ResearchBrief
 
 
 @dataclass(slots=True)
 class FinalRanking:
-    ranked: list[EnrichedCandidate]
-    high_confidence: list[EnrichedCandidate]
-    exploratory: list[EnrichedCandidate]
-    broad_intent: list[EnrichedCandidate]
+    ranked: list[Candidate]
+    high_confidence: list[Candidate]
+    exploratory: list[Candidate]
+    broad_intent: list[Candidate]
     synthesis: str = ""
 
 
 def finalize_ranking(
-    candidates: list[EnrichedCandidate],
+    candidates: list[Candidate],
     brief: ResearchBrief,
     warnings: list[str],
 ) -> FinalRanking:
@@ -28,7 +28,7 @@ def finalize_ranking(
     return ranking
 
 
-def group_final_ranking(candidates: list[EnrichedCandidate], brief: ResearchBrief) -> FinalRanking:
+def group_final_ranking(candidates: list[Candidate], brief: ResearchBrief) -> FinalRanking:
     ranked = list(candidates)
     _sort_candidates(ranked)
     top = ranked[: brief.top_k]
@@ -40,11 +40,11 @@ def group_final_ranking(candidates: list[EnrichedCandidate], brief: ResearchBrie
     )
 
 
-def is_broad_intent_match(candidate: EnrichedCandidate) -> bool:
+def is_broad_intent_match(candidate: Candidate) -> bool:
     return any(flag in {"survey_intent", "benchmark_intent", "foundational_intent"} for flag in candidate.flags)
 
 
-def _apply_llm_layer(ranked: list[EnrichedCandidate], brief: ResearchBrief, warnings: list[str]) -> str:
+def _apply_llm_layer(ranked: list[Candidate], brief: ResearchBrief, warnings: list[str]) -> str:
     client = LlmClient.from_env()
     if client is None:
         return ""
@@ -75,5 +75,5 @@ def _apply_llm_layer(ranked: list[EnrichedCandidate], brief: ResearchBrief, warn
         return ""
 
 
-def _sort_candidates(candidates: list[EnrichedCandidate]) -> None:
+def _sort_candidates(candidates: list[Candidate]) -> None:
     candidates.sort(key=lambda item: (item.score, item.citation_count, item.year or 0), reverse=True)

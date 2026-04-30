@@ -5,7 +5,7 @@ import re
 from dataclasses import dataclass
 
 from research_lab.lex import STOPWORDS, tokenize
-from research_lab.models import EnrichedCandidate, PaperCandidate, ResearchBrief, RetrievalCandidate, ScoredCandidate
+from research_lab.models import Candidate, ResearchBrief
 from research_lab.sources.extraction import FullTextResult, fetch_candidate_full_text
 from research_lab.sources.transport import HttpClient, SourceError
 
@@ -20,7 +20,7 @@ class EnrichmentResult:
     needs_user_article: bool
 
 
-def needs_user_article(candidate: PaperCandidate) -> bool:
+def needs_user_article(candidate: Candidate) -> bool:
     return (
         candidate.document_kind == "paper"
         and not candidate.full_text
@@ -139,7 +139,7 @@ def extract_evidence_sentences(text: str, brief: ResearchBrief, limit: int = 3) 
 
 
 def enrich_candidate(
-    candidate: RetrievalCandidate | PaperCandidate,
+    candidate: Candidate,
     brief: ResearchBrief,
     client: HttpClient,
 ) -> EnrichmentResult:
@@ -159,16 +159,11 @@ def enrich_candidate(
     if result.text:
         evidence = extract_evidence_sentences(result.text, brief)
 
-    paper = (
-        candidate
-        if isinstance(candidate, PaperCandidate)
-        else candidate.to_paper_candidate()
-    )
-    paper.full_text = result.text
-    paper.full_text_source = result.source
-    paper.access_status = result.access_status
-    paper.access_url = result.access_url
-    paper.evidence = list(evidence)
+    candidate.full_text = result.text
+    candidate.full_text_source = result.source
+    candidate.access_status = result.access_status
+    candidate.access_url = result.access_url
+    candidate.evidence = list(evidence)
 
     return EnrichmentResult(
         text=result.text,
@@ -176,29 +171,49 @@ def enrich_candidate(
         access_status=result.access_status,
         access_url=result.access_url,
         evidence=evidence,
-        needs_user_article=needs_user_article(paper),
+        needs_user_article=needs_user_article(candidate),
     )
 
 
 def enrich_candidates(
-    candidates: list[ScoredCandidate],
+    candidates: list[Candidate],
     brief: ResearchBrief,
     client: HttpClient,
-) -> tuple[list[EnrichedCandidate], list[str]]:
-    enriched: list[EnrichedCandidate] = []
+) -> tuple[list[Candidate], list[str]]:
+    enriched: list[Candidate] = []
     warnings: list[str] = []
     for candidate in candidates:
         result = enrich_candidate(candidate, brief, client)
-        enriched_candidate = EnrichedCandidate.from_paper_candidate(candidate.to_paper_candidate())
-        enriched_candidate.access_status = result.access_status
-        enriched_candidate.access_url = result.access_url
+        enriched_candidate = Candidate(
+            title=candidate.title,
+            abstract=candidate.abstract,
+            url=candidate.url,
+            source=candidate.source,
+            source_id=candidate.source_id,
+            authors=list(candidate.authors),
+            year=candidate.year,
+            venue=candidate.venue,
+            doi=candidate.doi,
+            citation_count=candidate.citation_count,
+            open_access_url=candidate.open_access_url,
+            document_kind=candidate.document_kind,
+            snippet=candidate.snippet,
+            fields_of_study=list(candidate.fields_of_study),
+            matched_queries=list(candidate.matched_queries),
+            source_names=list(candidate.source_names),
+            score=candidate.score,
+            reasons=list(candidate.reasons),
+            flags=list(candidate.flags),
+            full_text=result.text,
+            full_text_source=result.source,
+            access_status=result.access_status,
+            access_url=result.access_url,
+            evidence=list(result.evidence),
+        )
         if not result.text:
             if result.access_status == "unreadable":
                 warnings.append(f"no readable content found for {enriched_candidate.title}")
             enriched.append(enriched_candidate)
             continue
-        enriched_candidate.full_text = result.text
-        enriched_candidate.full_text_source = result.source
-        enriched_candidate.evidence = list(result.evidence)
         enriched.append(enriched_candidate)
     return enriched, warnings

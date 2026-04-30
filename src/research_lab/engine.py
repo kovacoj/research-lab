@@ -6,7 +6,7 @@ from pathlib import Path
 from research_lab.enrichment import enrich_candidates
 from research_lab.identity import candidates_match
 from research_lab.final_ranking import finalize_ranking
-from research_lab.models import EnrichedCandidate, PaperCandidate, QueryRecord, ResearchBrief, RetrievalCandidate, RunArtifacts, ScoredCandidate
+from research_lab.models import Candidate, QueryRecord, ResearchBrief, RunArtifacts
 from research_lab.planner import build_expansion_queries, build_seed_queries
 from research_lab.rank import dedupe_candidates, rank_candidates
 from research_lab.report import write_run_files
@@ -26,7 +26,7 @@ def execute_run(
     retrieval = RetrievalPolicy(client=client, scholar_per_query=brief.scholar_per_query)
     all_queries: list[QueryRecord] = []
     seen_query_strings: set[str] = set()
-    pool: list[PaperCandidate | RetrievalCandidate] = []
+    pool: list[Candidate] = []
     warnings: list[str] = retrieval.warnings
 
     seed_queries = build_seed_queries(brief)
@@ -42,7 +42,7 @@ def execute_run(
         top_authors = _top_authors(seed_candidates)
         expansion_queries = build_expansion_queries(brief, top_titles, top_authors, iteration)
 
-        expanded_pool: list[PaperCandidate] = []
+        expanded_pool: list[Candidate] = []
         for query in expansion_queries:
             if not _add_query(query, all_queries, seen_query_strings):
                 continue
@@ -58,10 +58,10 @@ def execute_run(
 
     enriched, enrichment_warnings = enrich_candidates(ranked[: brief.full_text_top_n], brief, client)
     warnings.extend(enrichment_warnings)
-    pool.extend(candidate.to_paper_candidate() for candidate in enriched)
+    pool.extend(enriched)
     deduped_pool = dedupe_candidates(pool)
     ranked = rank_candidates(deduped_pool, brief)
-    final_ranked = [EnrichedCandidate.from_paper_candidate(candidate) for candidate in _merge_scored_candidates(ranked, deduped_pool)]
+    final_ranked = _merge_scored_candidates(ranked, deduped_pool)
     final_ranking = finalize_ranking(final_ranked, brief, warnings)
 
     artifacts = RunArtifacts.create(
@@ -69,7 +69,7 @@ def execute_run(
         run_dir=str(run_dir),
         brief=brief,
         queries=all_queries,
-        candidates=[candidate.to_paper_candidate() for candidate in final_ranking.ranked],
+        candidates=final_ranking.ranked,
         program_text=program_text,
         warnings=sorted(set(warnings)),
         synthesis=final_ranking.synthesis,
@@ -89,19 +89,19 @@ def _add_query(query: QueryRecord, all_queries: list[QueryRecord], seen: set[str
     return True
 
 
-def _top_authors(candidates: list[ScoredCandidate]) -> list[str]:
+def _top_authors(candidates: list[Candidate]) -> list[str]:
     counts = Counter(author for candidate in candidates for author in candidate.authors[:3] if author)
     return [author for author, _ in counts.most_common(3)]
 
 
-def _merge_scored_candidates(ranked: list[ScoredCandidate], pool: list[PaperCandidate]) -> list[PaperCandidate]:
-    merged: list[PaperCandidate] = []
+def _merge_scored_candidates(ranked: list[Candidate], pool: list[Candidate]) -> list[Candidate]:
+    merged: list[Candidate] = []
     used_indices: set[int] = set()
     for scored_candidate in ranked:
         for index, candidate in enumerate(pool):
             if index in used_indices:
                 continue
-            if not candidates_match(scored_candidate.to_paper_candidate(), candidate):
+            if not candidates_match(scored_candidate, candidate):
                 continue
             candidate.score = scored_candidate.score
             candidate.reasons = list(scored_candidate.reasons)
@@ -112,7 +112,7 @@ def _merge_scored_candidates(ranked: list[ScoredCandidate], pool: list[PaperCand
     return merged
 
 
-def _expansion_seed_candidates(ranked: list[ScoredCandidate], brief: ResearchBrief) -> list[ScoredCandidate]:
+def _expansion_seed_candidates(ranked: list[Candidate], brief: ResearchBrief) -> list[Candidate]:
     required_hits = 0
     if brief.must_include:
         required_hits = 1 if len(brief.must_include) <= 2 else 2
@@ -134,7 +134,7 @@ def _expansion_seed_candidates(ranked: list[ScoredCandidate], brief: ResearchBri
     return ranked[:3]
 
 
-def _must_include_hits(candidate: ScoredCandidate, brief: ResearchBrief) -> int:
+def _must_include_hits(candidate: Candidate, brief: ResearchBrief) -> int:
     searchable_text = f"{candidate.title} {candidate.abstract} {candidate.snippet}".lower()
     return sum(1 for term in brief.must_include if term.lower() in searchable_text)
 

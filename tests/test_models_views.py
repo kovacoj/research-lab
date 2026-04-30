@@ -4,36 +4,18 @@ import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from research_lab.models import EnrichedCandidate, PaperCandidate, RetrievalCandidate, ScoredCandidate
+from research_lab.models import Candidate, PaperCandidate, RetrievalCandidate, ScoredCandidate, EnrichedCandidate
 
 
-class CandidateViewTests(unittest.TestCase):
-    def test_candidate_views_hide_unset_lifecycle_fields(self) -> None:
-        retrieval = RetrievalCandidate(
-            title="Paper",
-            abstract="Abstract",
-            url="https://example.com",
-            source="openalex",
-            source_id="oa:1",
-        )
-        scored = ScoredCandidate(
-            title="Paper",
-            abstract="Abstract",
-            url="https://example.com",
-            source="openalex",
-            source_id="oa:1",
-            score=0.7,
-            reasons=["has abstract"],
-            flags=["benchmark_intent"],
-        )
+class CandidateAliasTests(unittest.TestCase):
+    def test_all_candidate_aliases_point_to_same_class(self) -> None:
+        self.assertIs(PaperCandidate, Candidate)
+        self.assertIs(RetrievalCandidate, Candidate)
+        self.assertIs(ScoredCandidate, Candidate)
+        self.assertIs(EnrichedCandidate, Candidate)
 
-        with self.assertRaises(AttributeError):
-            _ = retrieval.score
-        with self.assertRaises(AttributeError):
-            _ = scored.full_text
-
-    def test_enriched_candidate_round_trips_through_paper_candidate(self) -> None:
-        paper = PaperCandidate(
+    def test_candidate_has_all_fields(self) -> None:
+        candidate = Candidate(
             title="Paper",
             abstract="Abstract",
             url="https://example.com",
@@ -45,13 +27,30 @@ class CandidateViewTests(unittest.TestCase):
             full_text="Full text",
             evidence=["evidence"],
         )
+        self.assertEqual(candidate.score, 0.7)
+        self.assertEqual(candidate.full_text, "Full text")
+        self.assertEqual(candidate.evidence, ["evidence"])
+        self.assertEqual(candidate.flags, ["benchmark_intent"])
 
-        enriched = EnrichedCandidate.from_paper_candidate(paper)
-        round_tripped = enriched.to_paper_candidate()
-
-        self.assertEqual(round_tripped.full_text, "Full text")
-        self.assertEqual(round_tripped.flags, ["benchmark_intent"])
-        self.assertEqual(round_tripped.evidence, ["evidence"])
+    def test_candidate_round_trips_through_dict(self) -> None:
+        candidate = Candidate(
+            title="Paper",
+            abstract="Abstract",
+            url="https://example.com",
+            source="openalex",
+            source_id="oa:1",
+            score=0.7,
+            reasons=["has abstract"],
+            flags=["benchmark_intent"],
+            full_text="Full text",
+            evidence=["evidence"],
+        )
+        payload = candidate.to_dict()
+        restored = Candidate.from_dict(payload)
+        self.assertEqual(restored.title, "Paper")
+        self.assertEqual(restored.score, 0.7)
+        self.assertEqual(restored.full_text, "Full text")
+        self.assertEqual(restored.evidence, ["evidence"])
 
 
 if __name__ == "__main__":

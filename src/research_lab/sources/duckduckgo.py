@@ -3,7 +3,7 @@ from __future__ import annotations
 from html.parser import HTMLParser
 import urllib.parse
 
-from research_lab.models import RetrievalCandidate
+from research_lab.models import Candidate
 from research_lab.sources.extraction import _clean_text
 from research_lab.sources.transport import HttpClient
 
@@ -71,7 +71,7 @@ def _url_host(url: str) -> str:
     return urllib.parse.urlparse(url).netloc
 
 
-def search_duckduckgo(query: str, limit: int, client: HttpClient) -> list[RetrievalCandidate]:
+def search_duckduckgo(query: str, limit: int, client: HttpClient) -> list[Candidate]:
     if limit <= 0:
         return []
     response = client.fetch(f"https://html.duckduckgo.com/html/?{urllib.parse.urlencode({'q': query})}")
@@ -79,7 +79,7 @@ def search_duckduckgo(query: str, limit: int, client: HttpClient) -> list[Retrie
     parser.feed(response.body.decode("utf-8", errors="ignore"))
     parser.close()
     return [
-        RetrievalCandidate(
+        Candidate(
             title=item["title"],
             abstract=item["snippet"],
             url=item["url"],

@@ -6,7 +6,7 @@ import re
 
 from research_lab.identity import candidates_match, normalize_title
 from research_lab.lex import STOPWORDS, tokenize
-from research_lab.models import PaperCandidate, ResearchBrief, RetrievalCandidate, ScoredCandidate
+from research_lab.models import Candidate, ResearchBrief
 
 VISUAL_TERMS = {"vision", "visual", "image", "images", "video", "clip"}
 ROBOTICS_TERMS = {"robot", "robotic", "robotics", "manipulation", "embodied"}
@@ -14,18 +14,13 @@ BIOMED_TERMS = {"protein", "molecular", "biomedical", "medical", "drug", "clinic
 TEXT_TERMS = {"language", "languages", "llm", "llms", "text", "nlp"}
 SURVEY_TERMS = {"survey", "review", "overview"}
 BENCHMARK_TERMS = {"benchmark", "benchmarking", "comparison", "comparative", "evaluation"}
-def _to_paper_candidate(candidate: RetrievalCandidate | PaperCandidate) -> PaperCandidate:
-    if isinstance(candidate, PaperCandidate):
-        return candidate
-    return candidate.to_paper_candidate()
 
 
-def dedupe_candidates(candidates: list[RetrievalCandidate | PaperCandidate]) -> list[PaperCandidate]:
-    merged: list[PaperCandidate] = []
-    by_doi: dict[str, PaperCandidate] = {}
-    by_title: dict[str, PaperCandidate] = {}
-    for raw_candidate in candidates:
-        candidate = _to_paper_candidate(raw_candidate)
+def dedupe_candidates(candidates: list[Candidate]) -> list[Candidate]:
+    merged: list[Candidate] = []
+    by_doi: dict[str, Candidate] = {}
+    by_title: dict[str, Candidate] = {}
+    for candidate in candidates:
         if not candidate.title:
             continue
         doi_key = candidate.doi.lower().strip() if candidate.doi else ""
@@ -133,7 +128,7 @@ def _domain_mismatch_penalty(topic_terms: set[str], text_terms: set[str]) -> tup
     return penalty, reasons
 
 
-def _context_intent_bonus(candidate: PaperCandidate, brief: ResearchBrief, searchable_lower: str) -> tuple[float, list[str], list[str]]:
+def _context_intent_bonus(candidate: Candidate, brief: ResearchBrief, searchable_lower: str) -> tuple[float, list[str], list[str]]:
     context = brief.context.lower()
     title_norm = normalize_title(candidate.title)
     bonus = 0.0
@@ -170,8 +165,7 @@ def _add_flag(flags: list[str], flag: str) -> None:
         flags.append(flag)
 
 
-def score_candidate(candidate_view: RetrievalCandidate | PaperCandidate, brief: ResearchBrief) -> ScoredCandidate:
-    candidate = _to_paper_candidate(candidate_view)
+def score_candidate(candidate: Candidate, brief: ResearchBrief) -> Candidate:
     topic_terms = _keyword_set(brief.topic)
     context_terms = _keyword_set(brief.context)
     title_terms = _keyword_set(candidate.title)
@@ -325,9 +319,9 @@ def score_candidate(candidate_view: RetrievalCandidate | PaperCandidate, brief: 
     candidate.score = round(score, 4)
     candidate.reasons = reasons
     candidate.flags = flags
-    return ScoredCandidate.from_paper_candidate(candidate)
+    return candidate
 
 
-def rank_candidates(candidates: list[RetrievalCandidate | PaperCandidate], brief: ResearchBrief) -> list[ScoredCandidate]:
+def rank_candidates(candidates: list[Candidate], brief: ResearchBrief) -> list[Candidate]:
     scored = [score_candidate(candidate, brief) for candidate in candidates]
     return sorted(scored, key=lambda item: (item.score, item.citation_count, item.year or 0), reverse=True)

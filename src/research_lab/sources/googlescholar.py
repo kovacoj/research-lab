@@ -4,7 +4,7 @@ from html.parser import HTMLParser
 import re
 import urllib.parse
 
-from research_lab.models import RetrievalCandidate
+from research_lab.models import Candidate
 from research_lab.sources.extraction import _clean_text, _extract_year
 from research_lab.sources.transport import HttpClient, SourceError
 
@@ -133,7 +133,7 @@ def _clean_scholar_title(title: str) -> str:
     return _clean_text(re.sub(r"^(?:\[(?:HTML|PDF|BOOK|CITATION)\])+\s*", "", title, flags=re.IGNORECASE))
 
 
-def search_google_scholar(query: str, limit: int, client: HttpClient) -> list[RetrievalCandidate]:
+def search_google_scholar(query: str, limit: int, client: HttpClient) -> list[Candidate]:
     if limit <= 0:
         return []
     response = client.fetch(f"https://scholar.google.com/scholar?{urllib.parse.urlencode({'hl': 'en', 'q': query, 'num': str(min(limit, 20))})}")
@@ -145,7 +145,7 @@ def search_google_scholar(query: str, limit: int, client: HttpClient) -> list[Re
     parser.feed(html)
     parser.close()
     return [
-        RetrievalCandidate(
+        Candidate(
             title=_clean_scholar_title(item["title"]),
             abstract=item["snippet"],
             url=item["url"],

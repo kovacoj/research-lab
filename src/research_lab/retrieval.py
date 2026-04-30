@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 
-from research_lab.models import QueryRecord, ResearchBrief, RetrievalCandidate, ScoredCandidate
+from research_lab.models import Candidate, QueryRecord, ResearchBrief
 from research_lab.sources import (
     HttpClient,
     SourceError,
@@ -30,8 +30,8 @@ class RetrievalPolicy:
             "googlescholar_requests_remaining": 3 if scholar_per_query > 0 else 0,
         }
 
-    def search(self, query: QueryRecord, brief: ResearchBrief) -> list[RetrievalCandidate]:
-        collected: list[RetrievalCandidate] = []
+    def search(self, query: QueryRecord, brief: ResearchBrief) -> list[Candidate]:
+        collected: list[Candidate] = []
         if self._should_use_arxiv(query):
             try:
                 self._state["arxiv_requests_remaining"] = int(self._state["arxiv_requests_remaining"]) - 1
@@ -60,7 +60,7 @@ class RetrievalPolicy:
                 self._handle_google_scholar_error(exc)
         return collected
 
-    def fetch_references(self, candidate: ScoredCandidate, per_query: int) -> list[RetrievalCandidate]:
+    def fetch_references(self, candidate: Candidate, per_query: int) -> list[Candidate]:
         if not self._should_use_semantic_scholar(None):
             return []
         if not candidate.source_id or not candidate.source.startswith("semanticscholar"):
@@ -75,7 +75,7 @@ class RetrievalPolicy:
             reference.matched_queries.append(f"references:{candidate.title}")
         return references
 
-    def _annotate(self, query: QueryRecord, candidates: list[RetrievalCandidate]) -> list[RetrievalCandidate]:
+    def _annotate(self, query: QueryRecord, candidates: list[Candidate]) -> list[Candidate]:
         for candidate in candidates:
             candidate.matched_queries.append(query.query)
         return candidates

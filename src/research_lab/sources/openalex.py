@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 import urllib.parse
 
-from research_lab.models import RetrievalCandidate
+from research_lab.models import Candidate
 from research_lab.sources.transport import HttpClient
 
 
@@ -26,7 +26,7 @@ def _extract_doi(raw_id: str | None) -> str:
     return raw_id
 
 
-def search_openalex(query: str, per_page: int, since_year: int | None, client: HttpClient) -> list[RetrievalCandidate]:
+def search_openalex(query: str, per_page: int, since_year: int | None, client: HttpClient) -> list[Candidate]:
     params = {"search": query, "per-page": str(per_page), "sort": "relevance_score:desc"}
     filter_parts: list[str] = []
     if since_year is not None:
@@ -41,13 +41,13 @@ def search_openalex(query: str, per_page: int, since_year: int | None, client: H
         params["api_key"] = api_key
 
     payload = client.get_json(f"https://api.openalex.org/works?{urllib.parse.urlencode(params)}")
-    results: list[RetrievalCandidate] = []
+    results: list[Candidate] = []
     for item in payload.get("results", []):
         primary_location = item.get("primary_location") or {}
         oa_location = item.get("best_oa_location") or {}
         authorships = item.get("authorships") or []
         results.append(
-            RetrievalCandidate(
+            Candidate(
                 title=item.get("title") or "",
                 abstract=_join_abstract(item.get("abstract_inverted_index")),
                 url=(primary_location.get("landing_page_url") or item.get("id") or ""),

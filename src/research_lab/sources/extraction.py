@@ -9,7 +9,7 @@ import tempfile
 
 from dataclasses import dataclass
 
-from research_lab.models import RetrievalCandidate
+from research_lab.models import Candidate
 from research_lab.sources.transport import HttpClient, HttpResponse, SourceError
 
 
@@ -107,7 +107,7 @@ def _classify_fetch_error(url: str, exc: SourceError) -> FullTextResult:
     return FullTextResult(text="", source="", access_status="unreadable", access_url=url)
 
 
-def _classify_html_access(candidate: RetrievalCandidate, response: HttpResponse) -> FullTextResult:
+def _classify_html_access(candidate: Candidate, response: HttpResponse) -> FullTextResult:
     text = _extract_text_from_html(response.body.decode("utf-8", errors="ignore"))
     lowered = text.lower()
     if not text:
@@ -123,7 +123,7 @@ def _classify_html_access(candidate: RetrievalCandidate, response: HttpResponse)
     return FullTextResult(text="", source="", access_status="unreadable", access_url=response.final_url)
 
 
-def fetch_candidate_full_text(candidate: RetrievalCandidate, client: HttpClient) -> FullTextResult:
+def fetch_candidate_full_text(candidate: Candidate, client: HttpClient) -> FullTextResult:
     last_result = FullTextResult(text="", source="", access_status="", access_url="")
     last_error: SourceError | None = None
     for url in [candidate.open_access_url, candidate.url]:
