@@ -182,6 +182,36 @@ If you set `RESEARCH_LAB_LLM_MODEL`, the lab will also:
 
 If the LLM call fails or is not configured, the run still completes with heuristic ranking only.
 
+## GitHub Agent
+
+This repo also includes a GitHub Actions workflow at `.github/workflows/opencode.yml` that lets OpenCode respond to GitHub comments.
+
+It can handle:
+
+- issue comments
+- PR conversation comments
+- inline PR review comments in `Files changed`
+- submitted PR reviews with a body
+
+Typical commands are:
+
+```text
+/opencode explain this issue
+/opencode fix this
+/oc update the brief parser for this edge case
+/oc address these review comments
+```
+
+The workflow is configured to use `GITHUB_TOKEN`, so the agent can reply on issues and PRs, push commits, and open or update PRs when the action decides that is appropriate.
+
+To use it, make sure:
+
+- the `opencode` workflow exists in `.github/workflows/opencode.yml`
+- the `SIEMENS_LLM_API_KEY` secret is configured in GitHub Actions secrets
+- GitHub Actions are enabled for the repository
+
+Then create a new GitHub comment containing `/oc` or `/opencode`. Editing an old comment will not trigger the workflow.
+
 ## OpenCode Prompts
 
 If you run OpenCode inside this repo, there are prompt files under `.opencode/agents/` for:
