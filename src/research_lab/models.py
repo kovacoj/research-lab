@@ -94,6 +94,36 @@ class Candidate:
     def to_dict(self) -> dict:
         return asdict(self)
 
+    def copy(self) -> "Candidate":
+        return Candidate(
+            title=self.title,
+            abstract=self.abstract,
+            url=self.url,
+            source=self.source,
+            source_id=self.source_id,
+            authors=list(self.authors),
+            year=self.year,
+            venue=self.venue,
+            doi=self.doi,
+            citation_count=self.citation_count,
+            open_access_url=self.open_access_url,
+            document_kind=self.document_kind,
+            snippet=self.snippet,
+            full_text=self.full_text,
+            full_text_source=self.full_text_source,
+            access_status=self.access_status,
+            access_url=self.access_url,
+            fields_of_study=list(self.fields_of_study),
+            matched_queries=list(self.matched_queries),
+            source_names=list(self.source_names),
+            score=self.score,
+            llm_score=self.llm_score,
+            reasons=list(self.reasons),
+            flags=list(self.flags),
+            llm_reasons=list(self.llm_reasons),
+            evidence=list(self.evidence),
+        )
+
     @classmethod
     def from_dict(cls, payload: dict) -> "Candidate":
         return cls(

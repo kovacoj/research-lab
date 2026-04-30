@@ -61,6 +61,25 @@ class RankTests(unittest.TestCase):
 
         self.assertEqual(ranked[0].title, relevant.title)
 
+    def test_rank_candidates_does_not_mutate_inputs(self) -> None:
+        brief = ResearchBrief(topic="test time adaptation for language models", context="I need ranked papers.")
+        candidate = PaperCandidate(
+            title="Test-Time Adaptation for Large Language Models",
+            abstract="We study adaptation of language models at inference time.",
+            url="https://example.com/relevant",
+            source="openalex",
+            source_id="oa:relevant",
+            source_names=["openalex"],
+        )
+
+        ranked = rank_candidates([candidate], brief)
+
+        self.assertEqual(candidate.score, 0.0)
+        self.assertEqual(candidate.reasons, [])
+        self.assertEqual(candidate.flags, [])
+        self.assertIsNot(ranked[0], candidate)
+        self.assertGreater(ranked[0].score, 0.0)
+
     def test_dedupe_merges_title_match_when_only_one_source_has_doi(self) -> None:
         with_doi = PaperCandidate(
             title="MedAdapter: Efficient Test-Time Adaptation of Large Language Models Towards Medical Reasoning",
@@ -132,7 +151,8 @@ class RankTests(unittest.TestCase):
         ranked = rank_candidates([broad, precise], brief)
 
         self.assertEqual(ranked[0].title, precise.title)
-        self.assertIn("drift", broad.flags)
+        drifted = next(candidate for candidate in ranked if candidate.title == broad.title)
+        self.assertIn("drift", drifted.flags)
 
     def test_extract_evidence_sentences_prefers_relevant_claims(self) -> None:
         brief = ResearchBrief(topic="prompt tuning for language models", context="I need evidence about inference-time adaptation.")
@@ -249,8 +269,8 @@ class RankTests(unittest.TestCase):
         ranked = rank_candidates([method_paper, review_paper], brief)
 
         self.assertEqual(ranked[0].title, review_paper.title)
-        self.assertIn("survey_intent", review_paper.flags)
-        self.assertIn("foundational_intent", review_paper.flags)
+        self.assertIn("survey_intent", ranked[0].flags)
+        self.assertIn("foundational_intent", ranked[0].flags)
 
     def test_rank_prefers_foundational_comparison_when_context_is_mixed_intent(self) -> None:
         brief = ResearchBrief(
@@ -283,8 +303,8 @@ class RankTests(unittest.TestCase):
         ranked = rank_candidates([exact_method, foundational_comparison], brief)
 
         self.assertEqual(ranked[0].title, foundational_comparison.title)
-        self.assertIn("benchmark_intent", foundational_comparison.flags)
-        self.assertIn("foundational_intent", foundational_comparison.flags)
+        self.assertIn("benchmark_intent", ranked[0].flags)
+        self.assertIn("foundational_intent", ranked[0].flags)
 
     def test_rank_sets_weak_title_flag(self) -> None:
         brief = ResearchBrief(topic="test-time adaptation for language models", context="")
@@ -297,9 +317,9 @@ class RankTests(unittest.TestCase):
             source_names=["openalex"],
         )
 
-        rank_candidates([candidate], brief)
+        ranked = rank_candidates([candidate], brief)
 
-        self.assertIn("weak_title", candidate.flags)
+        self.assertIn("weak_title", ranked[0].flags)
 
 
 if __name__ == "__main__":

@@ -201,6 +201,8 @@ class EnrichCandidateTests(unittest.TestCase):
         self.assertEqual(result.access_status, "open")
         self.assertTrue(result.text)
         self.assertGreaterEqual(len(result.evidence), 1)
+        self.assertEqual(candidate.full_text, "")
+        self.assertEqual(candidate.access_status, "")
 
     def test_enrich_candidate_handles_fetch_error_gracefully(self) -> None:
         candidate = PaperCandidate(
@@ -272,6 +274,56 @@ class EnrichCandidateTests(unittest.TestCase):
 
         self.assertEqual(len(enriched), 1)
         self.assertEqual(warnings, ["no readable content found for Unreadable Candidate"])
+
+    def test_enrich_candidates_does_not_mutate_inputs(self) -> None:
+        candidate = ScoredCandidate(
+            title="Readable Candidate",
+            abstract="",
+            url="https://example.com/open",
+            source="openalex",
+            source_id="oa:open",
+            document_kind="paper",
+            source_names=["openalex"],
+            score=0.7,
+        )
+        html = b"""
+        <html><body>
+          <h1>Readable Candidate</h1>
+          <h2>Introduction</h2>
+          <p>Prompt tuning for language models is an effective approach to adaptation at inference time.</p>
+          <h2>Methods</h2>
+          <p>We describe the method. </p>
+          <h2>Results</h2>
+          <p>Results are shown. </p>
+          <h2>Discussion</h2>
+          <p>Discussion follows. </p>
+          <h2>Conclusion</h2>
+          <p>Concluding remarks. </p>
+          <h2>References</h2>
+          <p>[1] Reference. </p>
+        </body></html>
+        """
+        client = _FakeClient(
+            {
+                "https://example.com/open": HttpResponse(
+                    body=html,
+                    content_type="text/html",
+                    final_url="https://example.com/open",
+                )
+            }
+        )
+        brief = ResearchBrief(topic="prompt tuning for language models", context="inference time adaptation")
+
+        enriched, warnings = enrich_candidates([candidate], brief, client)
+
+        self.assertEqual(warnings, [])
+        self.assertEqual(candidate.full_text, "")
+        self.assertEqual(candidate.access_status, "")
+        self.assertEqual(candidate.evidence, [])
+        self.assertIsNot(enriched[0], candidate)
+        self.assertEqual(enriched[0].access_status, "open")
+        self.assertTrue(enriched[0].full_text)
+        self.assertGreaterEqual(len(enriched[0].evidence), 1)
 
 
 if __name__ == "__main__":

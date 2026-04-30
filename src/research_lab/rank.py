@@ -166,6 +166,7 @@ def _add_flag(flags: list[str], flag: str) -> None:
 
 
 def score_candidate(candidate: Candidate, brief: ResearchBrief) -> Candidate:
+    candidate = candidate.copy()
     topic_terms = _keyword_set(brief.topic)
     context_terms = _keyword_set(brief.context)
     title_terms = _keyword_set(candidate.title)

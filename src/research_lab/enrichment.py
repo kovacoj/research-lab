@@ -159,11 +159,12 @@ def enrich_candidate(
     if result.text:
         evidence = extract_evidence_sentences(result.text, brief)
 
-    candidate.full_text = result.text
-    candidate.full_text_source = result.source
-    candidate.access_status = result.access_status
-    candidate.access_url = result.access_url
-    candidate.evidence = list(evidence)
+    enriched_candidate = candidate.copy()
+    enriched_candidate.full_text = result.text
+    enriched_candidate.full_text_source = result.source
+    enriched_candidate.access_status = result.access_status
+    enriched_candidate.access_url = result.access_url
+    enriched_candidate.evidence = list(evidence)
 
     return EnrichmentResult(
         text=result.text,
@@ -171,7 +172,7 @@ def enrich_candidate(
         access_status=result.access_status,
         access_url=result.access_url,
         evidence=evidence,
-        needs_user_article=needs_user_article(candidate),
+        needs_user_article=needs_user_article(enriched_candidate),
     )
 
 
@@ -184,32 +185,12 @@ def enrich_candidates(
     warnings: list[str] = []
     for candidate in candidates:
         result = enrich_candidate(candidate, brief, client)
-        enriched_candidate = Candidate(
-            title=candidate.title,
-            abstract=candidate.abstract,
-            url=candidate.url,
-            source=candidate.source,
-            source_id=candidate.source_id,
-            authors=list(candidate.authors),
-            year=candidate.year,
-            venue=candidate.venue,
-            doi=candidate.doi,
-            citation_count=candidate.citation_count,
-            open_access_url=candidate.open_access_url,
-            document_kind=candidate.document_kind,
-            snippet=candidate.snippet,
-            fields_of_study=list(candidate.fields_of_study),
-            matched_queries=list(candidate.matched_queries),
-            source_names=list(candidate.source_names),
-            score=candidate.score,
-            reasons=list(candidate.reasons),
-            flags=list(candidate.flags),
-            full_text=result.text,
-            full_text_source=result.source,
-            access_status=result.access_status,
-            access_url=result.access_url,
-            evidence=list(result.evidence),
-        )
+        enriched_candidate = candidate.copy()
+        enriched_candidate.full_text = result.text
+        enriched_candidate.full_text_source = result.source
+        enriched_candidate.access_status = result.access_status
+        enriched_candidate.access_url = result.access_url
+        enriched_candidate.evidence = list(result.evidence)
         if not result.text:
             if result.access_status == "unreadable":
                 warnings.append(f"no readable content found for {enriched_candidate.title}")
