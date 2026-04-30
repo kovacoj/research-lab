@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from collections import Counter
-import os
 from pathlib import Path
 
 from research_lab.identity import candidates_match
@@ -10,17 +9,8 @@ from research_lab.models import EnrichedCandidate, PaperCandidate, QueryRecord, 
 from research_lab.planner import build_expansion_queries, build_seed_queries
 from research_lab.rank import dedupe_candidates, extract_evidence_sentences, rank_candidates
 from research_lab.report import write_run_files
-from research_lab.sources import (
-    HttpClient,
-    SourceError,
-    fetch_candidate_full_text,
-    fetch_semantic_scholar_references,
-    search_arxiv,
-    search_duckduckgo,
-    search_google_scholar,
-    search_openalex,
-    search_semantic_scholar,
-)
+from research_lab.retrieval import RetrievalPolicy
+from research_lab.sources import HttpClient, SourceError, fetch_candidate_full_text
 from research_lab.store import init_db, record_run
 
 
@@ -32,25 +22,16 @@ def execute_run(
     db_path: Path,
 ) -> RunArtifacts:
     client = HttpClient()
-    semantic_scholar_api_key = os.getenv("SEMANTIC_SCHOLAR_API_KEY", "").strip()
+    retrieval = RetrievalPolicy(client=client, scholar_per_query=brief.scholar_per_query)
     all_queries: list[QueryRecord] = []
     seen_query_strings: set[str] = set()
     pool: list[PaperCandidate | RetrievalCandidate] = []
-    warnings: list[str] = []
-    source_state = {
-        "arxiv_enabled": True,
-        "arxiv_requests_remaining": 6,
-        "semanticscholar_enabled": bool(semantic_scholar_api_key),
-        "semanticscholar_has_api_key": bool(semantic_scholar_api_key),
-        "semanticscholar_requests_remaining": 999 if semantic_scholar_api_key else 0,
-        "googlescholar_enabled": brief.scholar_per_query > 0,
-        "googlescholar_requests_remaining": 3 if brief.scholar_per_query > 0 else 0,
-    }
+    warnings: list[str] = retrieval.warnings
 
     seed_queries = build_seed_queries(brief)
     for query in seed_queries:
         _add_query(query, all_queries, seen_query_strings)
-        pool.extend(_search_all_sources(query, brief, client, warnings, source_state))
+        pool.extend(retrieval.search(query, brief))
 
     ranked = rank_candidates(dedupe_candidates(pool), brief)
 
@@ -64,19 +45,10 @@ def execute_run(
         for query in expansion_queries:
             if not _add_query(query, all_queries, seen_query_strings):
                 continue
-            expanded_pool.extend(_search_all_sources(query, brief, client, warnings, source_state))
+            expanded_pool.extend(retrieval.search(query, brief))
 
         for candidate in seed_candidates[:2]:
-            if _should_use_semantic_scholar(None, source_state) and candidate.source_id and candidate.source.startswith("semanticscholar"):
-                try:
-                    source_state["semanticscholar_requests_remaining"] -= 1
-                    references = fetch_semantic_scholar_references(candidate.source_id, brief.per_query, client)
-                except SourceError as exc:
-                    _handle_semantic_scholar_error(exc, warnings, source_state)
-                    references = []
-                for reference in references:
-                    reference.matched_queries.append(f"references:{candidate.title}")
-                    expanded_pool.append(reference)
+            expanded_pool.extend(retrieval.fetch_references(candidate, brief.per_query))
 
         if not expanded_pool:
             continue
@@ -104,114 +76,6 @@ def execute_run(
     init_db(db_path)
     record_run(db_path, artifacts)
     return artifacts
-
-
-def _search_all_sources(
-    query: QueryRecord,
-    brief: ResearchBrief,
-    client: HttpClient,
-    warnings: list[str],
-    source_state: dict[str, object],
-) -> list[RetrievalCandidate]:
-    collected: list[RetrievalCandidate] = []
-    if _should_use_arxiv(query, source_state):
-        try:
-            source_state["arxiv_requests_remaining"] -= 1
-            arxiv_results = search_arxiv(query.query, brief.per_query, brief.since_year, client)
-            for candidate in arxiv_results:
-                candidate.matched_queries.append(query.query)
-            collected.extend(arxiv_results)
-        except SourceError as exc:
-            _handle_arxiv_error(exc, warnings, source_state)
-    try:
-        openalex_results = search_openalex(query.query, brief.per_query, brief.since_year, client)
-        for candidate in openalex_results:
-            candidate.matched_queries.append(query.query)
-        collected.extend(openalex_results)
-    except SourceError as exc:
-        warnings.append(str(exc))
-    if _should_use_semantic_scholar(query, source_state):
-        try:
-            source_state["semanticscholar_requests_remaining"] -= 1
-            semantic_results = search_semantic_scholar(query.query, brief.per_query, brief.since_year, client)
-            for candidate in semantic_results:
-                candidate.matched_queries.append(query.query)
-            collected.extend(semantic_results)
-        except SourceError as exc:
-            _handle_semantic_scholar_error(exc, warnings, source_state)
-    try:
-        web_results = search_duckduckgo(query.query, brief.web_per_query, client)
-        for candidate in web_results:
-            candidate.matched_queries.append(query.query)
-        collected.extend(web_results)
-    except SourceError as exc:
-        warnings.append(str(exc))
-    if _should_use_google_scholar(query, source_state):
-        try:
-            source_state["googlescholar_requests_remaining"] -= 1
-            scholar_results = search_google_scholar(query.query, brief.scholar_per_query, client)
-            for candidate in scholar_results:
-                candidate.matched_queries.append(query.query)
-            collected.extend(scholar_results)
-        except SourceError as exc:
-            _handle_google_scholar_error(exc, warnings, source_state)
-    return collected
-
-
-def _handle_arxiv_error(exc: SourceError, warnings: list[str], source_state: dict[str, object]) -> None:
-    message = str(exc)
-    if "HTTP Error 429" in message or "timed out" in message:
-        if source_state["arxiv_enabled"]:
-            warnings.append("arxiv disabled after rate limit")
-        source_state["arxiv_enabled"] = False
-        return
-    warnings.append(message)
-
-
-def _handle_semantic_scholar_error(exc: SourceError, warnings: list[str], source_state: dict[str, object]) -> None:
-    if "HTTP Error 429" in str(exc):
-        if source_state["semanticscholar_enabled"]:
-            warnings.append("semantic scholar disabled after rate limit")
-        source_state["semanticscholar_enabled"] = False
-        return
-    warnings.append(str(exc))
-
-
-def _handle_google_scholar_error(exc: SourceError, warnings: list[str], source_state: dict[str, object]) -> None:
-    if "google scholar blocked automated access" in str(exc):
-        if source_state["googlescholar_enabled"]:
-            warnings.append("google scholar disabled after block")
-        source_state["googlescholar_enabled"] = False
-        return
-    warnings.append(str(exc))
-
-
-def _should_use_arxiv(query: QueryRecord, source_state: dict[str, object]) -> bool:
-    if not source_state["arxiv_enabled"]:
-        return False
-    if int(source_state["arxiv_requests_remaining"]) <= 0:
-        return False
-    return query.origin not in {"author_expansion", "title_expansion"}
-
-
-def _should_use_semantic_scholar(query: QueryRecord | None, source_state: dict[str, object]) -> bool:
-    if not source_state["semanticscholar_enabled"]:
-        return False
-    if int(source_state["semanticscholar_requests_remaining"]) <= 0:
-        return False
-    if bool(source_state["semanticscholar_has_api_key"]):
-        return True
-    if query is None:
-        return True
-    return query.origin not in {"author_expansion", "title_expansion"}
-
-
-def _should_use_google_scholar(query: QueryRecord, source_state: dict[str, object]) -> bool:
-    if not source_state["googlescholar_enabled"]:
-        return False
-    if int(source_state["googlescholar_requests_remaining"]) <= 0:
-        return False
-    return query.origin not in {"author_expansion", "title_expansion"}
 
 
 def _add_query(query: QueryRecord, all_queries: list[QueryRecord], seen: set[str]) -> bool:
