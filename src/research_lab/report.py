@@ -158,12 +158,12 @@ def _needs_user_article(candidate: PaperCandidate) -> bool:
 
 
 def _matches_broad_intent(candidate: PaperCandidate) -> bool:
-    broad_intent_reasons = {
-        "matches survey intent",
-        "matches benchmark intent",
-        "matches foundational intent",
+    broad_intent_flags = {
+        "survey_intent",
+        "benchmark_intent",
+        "foundational_intent",
     }
-    return any(reason in broad_intent_reasons for reason in candidate.reasons)
+    return any(flag in broad_intent_flags for flag in candidate.flags)
 
 
 def _render_article_request(candidate: PaperCandidate) -> list[str]:

@@ -4,8 +4,9 @@ from datetime import datetime, timezone
 import math
 import re
 
-from research_lab.models import PaperCandidate, ResearchBrief
-from research_lab.planner import STOPWORDS, tokenize
+from research_lab.identity import candidates_match, normalize_title
+from research_lab.lex import STOPWORDS, tokenize
+from research_lab.models import PaperCandidate, ResearchBrief, RetrievalCandidate, ScoredCandidate
 
 VISUAL_TERMS = {"vision", "visual", "image", "images", "video", "clip"}
 ROBOTICS_TERMS = {"robot", "robotic", "robotics", "manipulation", "embodied"}
@@ -13,36 +14,18 @@ BIOMED_TERMS = {"protein", "molecular", "biomedical", "medical", "drug", "clinic
 TEXT_TERMS = {"language", "languages", "llm", "llms", "text", "nlp"}
 SURVEY_TERMS = {"survey", "review", "overview"}
 BENCHMARK_TERMS = {"benchmark", "benchmarking", "comparison", "comparative", "evaluation"}
+def _to_paper_candidate(candidate: RetrievalCandidate | PaperCandidate) -> PaperCandidate:
+    if isinstance(candidate, PaperCandidate):
+        return candidate
+    return candidate.to_paper_candidate()
 
 
-def normalize_title(title: str) -> str:
-    lowered = title.lower()
-    lowered = re.sub(r"[^a-z0-9\s]", " ", lowered)
-    return re.sub(r"\s+", " ", lowered).strip()
-
-
-def _titles_match_fuzzily(left: str, right: str) -> bool:
-    left_norm = normalize_title(left)
-    right_norm = normalize_title(right)
-    if not left_norm or not right_norm:
-        return False
-    if left_norm == right_norm:
-        return True
-    shorter, longer = sorted([left_norm, right_norm], key=len)
-    if len(shorter.split()) >= 5 and longer.startswith(shorter):
-        return True
-    left_terms = set(left_norm.split())
-    right_terms = set(right_norm.split())
-    overlap = len(left_terms & right_terms)
-    minimum = min(len(left_terms), len(right_terms))
-    return minimum >= 5 and overlap / minimum >= 0.8
-
-
-def dedupe_candidates(candidates: list[PaperCandidate]) -> list[PaperCandidate]:
+def dedupe_candidates(candidates: list[RetrievalCandidate | PaperCandidate]) -> list[PaperCandidate]:
     merged: list[PaperCandidate] = []
     by_doi: dict[str, PaperCandidate] = {}
     by_title: dict[str, PaperCandidate] = {}
-    for candidate in candidates:
+    for raw_candidate in candidates:
+        candidate = _to_paper_candidate(raw_candidate)
         if not candidate.title:
             continue
         doi_key = candidate.doi.lower().strip() if candidate.doi else ""
@@ -54,7 +37,7 @@ def dedupe_candidates(candidates: list[PaperCandidate]) -> list[PaperCandidate]:
             existing = by_title.get(title_key)
         if existing is None:
             for prior in merged:
-                if _titles_match_fuzzily(prior.title, candidate.title):
+                if candidates_match(prior, candidate):
                     existing = prior
                     break
         if existing is None:
@@ -75,6 +58,14 @@ def dedupe_candidates(candidates: list[PaperCandidate]) -> list[PaperCandidate]:
             existing.url = candidate.url
         if not existing.open_access_url and candidate.open_access_url:
             existing.open_access_url = candidate.open_access_url
+        if not existing.full_text and candidate.full_text:
+            existing.full_text = candidate.full_text
+            existing.full_text_source = candidate.full_text_source
+        if not existing.access_status and candidate.access_status:
+            existing.access_status = candidate.access_status
+            existing.access_url = candidate.access_url
+        if not existing.evidence and candidate.evidence:
+            existing.evidence = list(candidate.evidence)
         if candidate.citation_count > existing.citation_count:
             existing.citation_count = candidate.citation_count
         if not existing.venue and candidate.venue:
@@ -142,24 +133,28 @@ def _domain_mismatch_penalty(topic_terms: set[str], text_terms: set[str]) -> tup
     return penalty, reasons
 
 
-def _context_intent_bonus(candidate: PaperCandidate, brief: ResearchBrief, searchable_lower: str) -> tuple[float, list[str]]:
+def _context_intent_bonus(candidate: PaperCandidate, brief: ResearchBrief, searchable_lower: str) -> tuple[float, list[str], list[str]]:
     context = brief.context.lower()
     title_norm = normalize_title(candidate.title)
     bonus = 0.0
     reasons: list[str] = []
+    flags: list[str] = []
     broad_intent_requested = any(term in context for term in SURVEY_TERMS | BENCHMARK_TERMS) or "foundational" in context
 
     if any(term in context for term in SURVEY_TERMS) and any(term in title_norm for term in SURVEY_TERMS):
         bonus += 0.18
         reasons.append("matches survey intent")
+        flags.append("survey_intent")
 
     if any(term in context for term in BENCHMARK_TERMS) and any(term in searchable_lower for term in BENCHMARK_TERMS):
         bonus += 0.18
         reasons.append("matches benchmark intent")
+        flags.append("benchmark_intent")
 
     if "foundational" in context and candidate.citation_count >= 100:
         bonus += 0.16
         reasons.append("matches foundational intent")
+        flags.append("foundational_intent")
 
     exact_topic = normalize_title(brief.topic)
     has_broad_intent_signal = any(term in searchable_lower for term in SURVEY_TERMS | BENCHMARK_TERMS)
@@ -167,7 +162,7 @@ def _context_intent_bonus(candidate: PaperCandidate, brief: ResearchBrief, searc
         bonus -= 0.24
         reasons.append("narrow method match against broad intent")
 
-    return bonus, reasons
+    return bonus, reasons, flags
 
 
 def _trim_evidence_preamble(text: str, brief: ResearchBrief) -> str:
@@ -220,6 +215,11 @@ def _has_claim_verb(text: str) -> bool:
     return re.search(r"\b(is|are|was|were|has|have|can|could|shows|show|improves|improve|uses|use|assists)\b", text, flags=re.IGNORECASE) is not None
 
 
+def _add_flag(flags: list[str], flag: str) -> None:
+    if flag not in flags:
+        flags.append(flag)
+
+
 def extract_evidence_sentences(text: str, brief: ResearchBrief, limit: int = 3) -> list[str]:
     topic_terms = _keyword_set(brief.topic)
     context_terms = _keyword_set(brief.context)
@@ -257,7 +257,8 @@ def extract_evidence_sentences(text: str, brief: ResearchBrief, limit: int = 3) 
     return results
 
 
-def score_candidate(candidate: PaperCandidate, brief: ResearchBrief) -> float:
+def score_candidate(candidate_view: RetrievalCandidate | PaperCandidate, brief: ResearchBrief) -> ScoredCandidate:
+    candidate = _to_paper_candidate(candidate_view)
     topic_terms = _keyword_set(brief.topic)
     context_terms = _keyword_set(brief.context)
     title_terms = _keyword_set(candidate.title)
@@ -274,6 +275,7 @@ def score_candidate(candidate: PaperCandidate, brief: ResearchBrief) -> float:
 
     score = 0.0
     reasons: list[str] = []
+    flags: list[str] = []
 
     title_overlap = len(topic_terms & title_terms)
     body_overlap = len(topic_terms & (abstract_terms | full_text_terms))
@@ -290,6 +292,7 @@ def score_candidate(candidate: PaperCandidate, brief: ResearchBrief) -> float:
         elif title_overlap == 0 and body_overlap > 0:
             score -= 0.12
             reasons.append("weak title alignment")
+            _add_flag(flags, "weak_title")
 
     if topic_bigrams:
         bigram_overlap = len(topic_bigrams & text_bigrams)
@@ -397,17 +400,21 @@ def score_candidate(candidate: PaperCandidate, brief: ResearchBrief) -> float:
     mismatch_penalty, mismatch_reasons = _domain_mismatch_penalty(topic_terms, text_terms)
     score -= mismatch_penalty
     reasons.extend(mismatch_reasons)
+    if any("drift" in reason for reason in mismatch_reasons):
+        _add_flag(flags, "drift")
 
-    intent_bonus, intent_reasons = _context_intent_bonus(candidate, brief, searchable_lower)
+    intent_bonus, intent_reasons, intent_flags = _context_intent_bonus(candidate, brief, searchable_lower)
     score += intent_bonus
     reasons.extend(intent_reasons)
+    for flag in intent_flags:
+        _add_flag(flags, flag)
 
     candidate.score = round(score, 4)
     candidate.reasons = reasons
-    return candidate.score
+    candidate.flags = flags
+    return ScoredCandidate.from_paper_candidate(candidate)
 
 
-def rank_candidates(candidates: list[PaperCandidate], brief: ResearchBrief) -> list[PaperCandidate]:
-    for candidate in candidates:
-        score_candidate(candidate, brief)
-    return sorted(candidates, key=lambda item: (item.score, item.citation_count, item.year or 0), reverse=True)
+def rank_candidates(candidates: list[RetrievalCandidate | PaperCandidate], brief: ResearchBrief) -> list[ScoredCandidate]:
+    scored = [score_candidate(candidate, brief) for candidate in candidates]
+    return sorted(scored, key=lambda item: (item.score, item.citation_count, item.year or 0), reverse=True)
