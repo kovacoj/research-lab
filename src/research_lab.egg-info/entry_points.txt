@@ -1,0 +1,2 @@
+[console_scripts]
+research-lab = research_lab.cli:main

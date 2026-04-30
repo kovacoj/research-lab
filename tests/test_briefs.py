@@ -48,6 +48,18 @@ class BriefParsingTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             parse_brief_markdown("## Context\nOnly notes")
 
+    def test_parse_brief_label_style_sections(self) -> None:
+        markdown = "Topic:\nTest topic\n\nContext:\nSome notes\n"
+        brief = parse_brief_markdown(markdown)
+        self.assertEqual(brief.topic, "Test topic")
+        self.assertIn("Some notes", brief.context)
+
+    def test_parse_brief_mixed_heading_and_label(self) -> None:
+        markdown = "# Topic\nMixed test\n\nContext:\nLabel context\n"
+        brief = parse_brief_markdown(markdown)
+        self.assertEqual(brief.topic, "Mixed test")
+        self.assertIn("Label context", brief.context)
+
 
 if __name__ == "__main__":
     unittest.main()
