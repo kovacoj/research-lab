@@ -112,6 +112,7 @@ class ReportTests(unittest.TestCase):
             report = (run_dir / "report.md").read_text(encoding="utf-8")
             self.assertIn("## Useful Web Sources", report)
             self.assertIn("Agentic Engineering Explained", report)
+            self.assertIn("### ", report)
 
 
 if __name__ == "__main__":
