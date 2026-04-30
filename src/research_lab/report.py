@@ -3,10 +3,9 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from research_lab.enrichment import needs_user_article
-from research_lab.final_ranking import group_final_ranking
-from research_lab.models import EnrichedCandidate, PaperCandidate, RunArtifacts
-from research_lab.web_result import CATEGORY_LABELS, collect_useful_web_sources, group_web_sources_by_category
+from research_lab.models import PaperCandidate, RunArtifacts
+from research_lab.report_assembly import assemble_report
+from research_lab.web_result import CATEGORY_LABELS
 
 
 def write_json(path: Path, payload: object) -> None:
@@ -50,14 +49,7 @@ def write_run_files(run_dir: Path, artifacts: RunArtifacts) -> None:
     bib = "\n".join(candidate_to_bibtex(candidate) for candidate in artifacts.candidates[: artifacts.brief.top_k])
     (run_dir / "references.bib").write_text(bib, encoding="utf-8")
 
-    ranking = group_final_ranking([EnrichedCandidate.from_paper_candidate(candidate) for candidate in artifacts.candidates], artifacts.brief)
-    top = [candidate.to_paper_candidate() for candidate in ranking.ranked[: artifacts.brief.top_k]]
-    high_confidence = [candidate.to_paper_candidate() for candidate in ranking.high_confidence]
-    exploratory = [candidate.to_paper_candidate() for candidate in ranking.exploratory]
-    requested_articles = [candidate for candidate in top if needs_user_article(candidate)]
-    broad_intent_matches = [candidate.to_paper_candidate() for candidate in ranking.broad_intent]
-    useful_web_sources = collect_useful_web_sources(artifacts.candidates)
-    web_groups = group_web_sources_by_category(useful_web_sources)
+    assembly = assemble_report(artifacts)
 
     lines: list[str] = [
         f"# Research Run {artifacts.run_id}",
@@ -76,14 +68,14 @@ def write_run_files(run_dir: Path, artifacts: RunArtifacts) -> None:
         lines.extend(f"- {warning}" for warning in artifacts.warnings[:20])
     if artifacts.synthesis:
         lines.extend(["", "## LLM Synthesis", artifacts.synthesis])
-    if broad_intent_matches:
+    if assembly.broad_intent_matches:
         lines.extend(["", "## Broad Coverage Matches"])
-        for candidate in broad_intent_matches[:4]:
+        for candidate in assembly.broad_intent_matches[:4]:
             lines.extend(_render_candidate(candidate))
-    if useful_web_sources:
+    if assembly.useful_web_groups:
         lines.extend(["", "## Useful Web Sources"])
         for category in ("survey_support", "engineering_explainer", "general_web"):
-            group = web_groups.get(category, [])
+            group = assembly.useful_web_groups.get(category, [])
             if not group:
                 continue
             label = CATEGORY_LABELS.get(category, category)
@@ -91,22 +83,22 @@ def write_run_files(run_dir: Path, artifacts: RunArtifacts) -> None:
             for candidate in group[:4]:
                 lines.extend(_render_candidate(candidate))
     lines.extend(["", "## High Confidence Matches"])
-    if high_confidence:
-        for candidate in high_confidence:
+    if assembly.high_confidence:
+        for candidate in assembly.high_confidence:
             lines.extend(_render_candidate(candidate))
     else:
         lines.append("- No candidates crossed the high-confidence threshold.")
 
     lines.extend(["", "## Requested Articles From User"])
-    if requested_articles:
-        for candidate in requested_articles[:5]:
+    if assembly.requested_articles:
+        for candidate in assembly.requested_articles[:5]:
             lines.extend(_render_article_request(candidate))
     else:
         lines.append("- No paywalled or abstract-only papers need user retrieval in this run.")
 
     lines.extend(["", "## Lower Confidence Leads"])
-    if exploratory:
-        for candidate in exploratory[:10]:
+    if assembly.exploratory:
+        for candidate in assembly.exploratory[:10]:
             lines.extend(_render_candidate(candidate))
     else:
         lines.append("- No lower-confidence leads were retained.")
