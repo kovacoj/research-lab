@@ -7,10 +7,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from research_lab.enrichment import (
     EnrichmentResult,
     enrich_candidate,
+    enrich_candidates,
     extract_evidence_sentences,
     needs_user_article,
 )
-from research_lab.models import PaperCandidate, ResearchBrief
+from research_lab.models import PaperCandidate, ResearchBrief, ScoredCandidate
 from research_lab.sources import HttpResponse, SourceError
 
 
@@ -247,6 +248,30 @@ class EnrichCandidateTests(unittest.TestCase):
         result = enrich_candidate(candidate, brief, _FailingClient())
 
         self.assertTrue(result.needs_user_article)
+
+    def test_enrich_candidates_collects_unreadable_warning(self) -> None:
+        candidate = ScoredCandidate(
+            title="Unreadable Candidate",
+            abstract="",
+            url="https://example.com/unreadable",
+            source="openalex",
+            source_id="oa:warn",
+            document_kind="paper",
+            source_names=["openalex"],
+            score=0.7,
+        )
+
+        class _FailingClient:
+            def fetch(self, url: str, headers: dict[str, str] | None = None) -> HttpResponse:
+                del headers
+                raise SourceError(f"request failed for {url}: network down")
+
+        brief = ResearchBrief(topic="test topic", context="test context")
+
+        enriched, warnings = enrich_candidates([candidate], brief, _FailingClient())
+
+        self.assertEqual(len(enriched), 1)
+        self.assertEqual(warnings, ["no readable content found for Unreadable Candidate"])
 
 
 if __name__ == "__main__":

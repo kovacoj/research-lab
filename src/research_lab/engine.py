@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections import Counter
 from pathlib import Path
 
-from research_lab.enrichment import enrich_candidate
+from research_lab.enrichment import enrich_candidates
 from research_lab.identity import candidates_match
 from research_lab.llm import LlmClient, LlmError, rerank_candidates_with_llm, summarize_candidates_with_llm
 from research_lab.models import EnrichedCandidate, PaperCandidate, QueryRecord, ResearchBrief, RetrievalCandidate, RunArtifacts, ScoredCandidate
@@ -56,7 +56,8 @@ def execute_run(
         pool.extend(expanded_pool)
         ranked = rank_candidates(dedupe_candidates(pool), brief)
 
-    enriched = _enrich_top_candidates(ranked[: brief.full_text_top_n], brief, client, warnings)
+    enriched, enrichment_warnings = enrich_candidates(ranked[: brief.full_text_top_n], brief, client)
+    warnings.extend(enrichment_warnings)
     pool.extend(candidate.to_paper_candidate() for candidate in enriched)
     deduped_pool = dedupe_candidates(pool)
     ranked = rank_candidates(deduped_pool, brief)
@@ -136,30 +137,6 @@ def _expansion_seed_candidates(ranked: list[ScoredCandidate], brief: ResearchBri
 def _must_include_hits(candidate: ScoredCandidate, brief: ResearchBrief) -> int:
     searchable_text = f"{candidate.title} {candidate.abstract} {candidate.snippet}".lower()
     return sum(1 for term in brief.must_include if term.lower() in searchable_text)
-
-
-def _enrich_top_candidates(
-    ranked: list[ScoredCandidate],
-    brief: ResearchBrief,
-    client: HttpClient,
-    warnings: list[str],
-) -> list[EnrichedCandidate]:
-    enriched: list[EnrichedCandidate] = []
-    for candidate in ranked:
-        result = enrich_candidate(candidate, brief, client)
-        enriched_candidate = EnrichedCandidate.from_paper_candidate(candidate.to_paper_candidate())
-        enriched_candidate.access_status = result.access_status
-        enriched_candidate.access_url = result.access_url
-        if not result.text:
-            if result.access_status == "unreadable":
-                warnings.append(f"no readable content found for {enriched_candidate.title}")
-            enriched.append(enriched_candidate)
-            continue
-        enriched_candidate.full_text = result.text
-        enriched_candidate.full_text_source = result.source
-        enriched_candidate.evidence = list(result.evidence)
-        enriched.append(enriched_candidate)
-    return enriched
 
 
 def _apply_llm_layer(ranked: list[EnrichedCandidate], brief: ResearchBrief, warnings: list[str]) -> str:
