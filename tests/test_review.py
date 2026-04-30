@@ -6,8 +6,9 @@ import unittest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from research_lab.models import PaperCandidate, ResearchBrief
-from research_lab.review import compare_runs, find_previous_run_ref, load_run_snapshot, write_review_markdown
+from research_lab.review import compare_runs, write_review_markdown
 from research_lab.report import write_json
+from research_lab.run_history import find_previous_run_ref, load_run_snapshot
 from research_lab.store import init_db, record_run
 from research_lab.models import RunArtifacts
 

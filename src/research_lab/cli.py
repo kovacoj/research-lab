@@ -8,7 +8,8 @@ from datetime import datetime
 from research_lab.briefs import load_brief_json, load_brief_markdown, write_brief_json
 from research_lab.engine import execute_run
 from research_lab.models import ResearchBrief
-from research_lab.review import compare_runs, find_previous_run_ref, load_run_snapshot, write_review_markdown
+from research_lab.review import compare_runs, write_review_markdown
+from research_lab.run_history import find_previous_run_ref, load_run_snapshot
 
 
 def main(argv: list[str] | None = None) -> None:
