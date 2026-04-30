@@ -1,13 +1,33 @@
 from pathlib import Path
 import sys
 import unittest
-from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from research_lab.engine import _expansion_seed_candidates, _search_all_sources
+from research_lab.engine import _expansion_seed_candidates
 from research_lab.models import PaperCandidate, QueryRecord, ResearchBrief
-from research_lab.sources import SourceError
+from research_lab.retrieval import RetrievalPolicy
+from research_lab.sources import HttpClient, HttpResponse, SourceError
+
+
+class _FakeClient(HttpClient):
+    def __init__(self, responses: dict[str, object]) -> None:
+        super().__init__()
+        self.responses = responses
+
+    def fetch(self, url: str, headers: dict[str, str] | None = None) -> HttpResponse:
+        del headers
+        response = self.responses[url]
+        if isinstance(response, Exception):
+            raise response
+        return response
+
+    def get_json(self, url: str, headers: dict[str, str] | None = None) -> dict:
+        del headers
+        response = self.responses[url]
+        if isinstance(response, Exception):
+            raise response
+        return response
 
 
 class EngineTests(unittest.TestCase):
@@ -85,109 +105,82 @@ class EngineTests(unittest.TestCase):
 
         self.assertEqual([item.title for item in seeds], [candidate.title])
 
-    def test_search_all_sources_disables_semantic_scholar_after_rate_limit(self) -> None:
+    def test_retrieval_policy_disables_semantic_scholar_after_rate_limit(self) -> None:
         brief = ResearchBrief(topic="graph neural networks", context="")
         query = QueryRecord(query="graph neural networks", origin="topic", iteration=0)
-        warnings: list[str] = []
-        source_state = {
-            "arxiv_enabled": True,
-            "arxiv_requests_remaining": 6,
-            "semanticscholar_enabled": True,
-            "semanticscholar_has_api_key": False,
-            "semanticscholar_requests_remaining": 5,
-            "googlescholar_enabled": True,
-            "googlescholar_requests_remaining": 3,
-        }
+        client = _FakeClient(
+            {
+                "https://api.openalex.org/works?search=graph+neural+networks&per-page=8&sort=relevance_score%3Adesc": {"results": []},
+                "https://api.semanticscholar.org/graph/v1/paper/search?query=graph+neural+networks&limit=8&fields=paperId%2Ctitle%2Cabstract%2Curl%2Cyear%2Cauthors%2Cvenue%2CcitationCount%2CexternalIds%2CopenAccessPdf%2CfieldsOfStudy": SourceError("request failed for semantic scholar: HTTP Error 429:"),
+                "https://html.duckduckgo.com/html/?q=graph+neural+networks": HttpResponse(body=b"<html></html>", content_type="text/html", final_url="https://html.duckduckgo.com/html/?q=graph+neural+networks"),
+            }
+        )
+        policy = RetrievalPolicy(client=client, scholar_per_query=0)
+        policy._state["arxiv_enabled"] = False
+        policy._state["semanticscholar_enabled"] = True
+        policy._state["semanticscholar_requests_remaining"] = 5
 
-        with patch("research_lab.engine.search_arxiv", return_value=[]), patch(
-            "research_lab.engine.search_openalex", return_value=[]
-        ), patch("research_lab.engine.search_duckduckgo", return_value=[]), patch(
-            "research_lab.engine.search_google_scholar", return_value=[]
-        ), patch(
-            "research_lab.engine.search_semantic_scholar",
-            side_effect=SourceError("request failed for semantic scholar: HTTP Error 429:"),
-        ) as semantic_mock:
-            _search_all_sources(query, brief, object(), warnings, source_state)
-            _search_all_sources(query, brief, object(), warnings, source_state)
+        policy.search(query, brief)
+        policy.search(query, brief)
 
-        self.assertEqual(semantic_mock.call_count, 1)
-        self.assertFalse(source_state["semanticscholar_enabled"])
-        self.assertEqual(warnings, ["semantic scholar disabled after rate limit"])
+        self.assertEqual(policy.warnings, ["semantic scholar disabled after rate limit"])
+        self.assertFalse(policy._state["semanticscholar_enabled"])
 
-    def test_search_all_sources_skips_semantic_scholar_for_low_value_expansion_without_key(self) -> None:
+    def test_retrieval_policy_skips_semantic_scholar_for_low_value_expansion_without_key(self) -> None:
         brief = ResearchBrief(topic="graph neural networks", context="")
         query = QueryRecord(query='"Jane Doe" graph neural networks', origin="author_expansion", iteration=1)
-        warnings: list[str] = []
-        source_state = {
-            "arxiv_enabled": True,
-            "arxiv_requests_remaining": 6,
-            "semanticscholar_enabled": True,
-            "semanticscholar_has_api_key": False,
-            "semanticscholar_requests_remaining": 5,
-            "googlescholar_enabled": True,
-            "googlescholar_requests_remaining": 3,
-        }
+        client = _FakeClient(
+            {
+                "https://api.openalex.org/works?search=%22Jane+Doe%22+graph+neural+networks&per-page=8&sort=relevance_score%3Adesc": {"results": []},
+                "https://html.duckduckgo.com/html/?q=%22Jane+Doe%22+graph+neural+networks": HttpResponse(body=b"<html></html>", content_type="text/html", final_url="https://html.duckduckgo.com/html/?q=%22Jane+Doe%22+graph+neural+networks"),
+            }
+        )
+        policy = RetrievalPolicy(client=client, scholar_per_query=0)
+        policy._state["semanticscholar_enabled"] = True
+        policy._state["semanticscholar_requests_remaining"] = 5
 
-        with patch("research_lab.engine.search_arxiv", return_value=[]), patch(
-            "research_lab.engine.search_openalex", return_value=[]
-        ), patch("research_lab.engine.search_duckduckgo", return_value=[]), patch(
-            "research_lab.engine.search_google_scholar", return_value=[]
-        ), patch("research_lab.engine.search_semantic_scholar") as semantic_mock:
-            _search_all_sources(query, brief, object(), warnings, source_state)
+        policy.search(query, brief)
 
-        semantic_mock.assert_not_called()
-        self.assertEqual(source_state["semanticscholar_requests_remaining"], 5)
+        self.assertEqual(policy._state["semanticscholar_requests_remaining"], 5)
 
-    def test_search_all_sources_disables_arxiv_after_rate_limit(self) -> None:
+    def test_retrieval_policy_disables_arxiv_after_rate_limit(self) -> None:
         brief = ResearchBrief(topic="graph neural networks", context="")
         query = QueryRecord(query="graph neural networks", origin="topic", iteration=0)
-        warnings: list[str] = []
-        source_state = {
-            "arxiv_enabled": True,
-            "arxiv_requests_remaining": 6,
-            "semanticscholar_enabled": False,
-            "semanticscholar_has_api_key": False,
-            "semanticscholar_requests_remaining": 0,
-            "googlescholar_enabled": False,
-            "googlescholar_requests_remaining": 0,
-        }
+        client = _FakeClient(
+            {
+                "https://export.arxiv.org/api/query?search_query=all%3Agraph+neural+networks&start=0&max_results=8&sortBy=relevance&sortOrder=descending": SourceError("request failed for arxiv: HTTP Error 429:"),
+                "https://api.openalex.org/works?search=graph+neural+networks&per-page=8&sort=relevance_score%3Adesc": {"results": []},
+                "https://html.duckduckgo.com/html/?q=graph+neural+networks": HttpResponse(body=b"<html></html>", content_type="text/html", final_url="https://html.duckduckgo.com/html/?q=graph+neural+networks"),
+            }
+        )
+        policy = RetrievalPolicy(client=client, scholar_per_query=0)
 
-        with patch("research_lab.engine.search_arxiv", side_effect=SourceError("request failed for arxiv: HTTP Error 429:")) as arxiv_mock, patch(
-            "research_lab.engine.search_openalex", return_value=[]
-        ), patch("research_lab.engine.search_duckduckgo", return_value=[]):
-            _search_all_sources(query, brief, object(), warnings, source_state)
-            _search_all_sources(query, brief, object(), warnings, source_state)
+        policy.search(query, brief)
+        policy.search(query, brief)
 
-        self.assertEqual(arxiv_mock.call_count, 1)
-        self.assertFalse(source_state["arxiv_enabled"])
-        self.assertEqual(warnings, ["arxiv disabled after rate limit"])
+        self.assertEqual(policy.warnings, ["arxiv disabled after rate limit"])
+        self.assertFalse(policy._state["arxiv_enabled"])
 
-    def test_search_all_sources_disables_google_scholar_after_block(self) -> None:
-        brief = ResearchBrief(topic="graph neural networks", context="")
+    def test_retrieval_policy_disables_google_scholar_after_block(self) -> None:
+        brief = ResearchBrief(topic="graph neural networks", context="", scholar_per_query=1)
         query = QueryRecord(query="graph neural networks", origin="topic", iteration=0)
-        warnings: list[str] = []
-        source_state = {
-            "arxiv_enabled": False,
-            "arxiv_requests_remaining": 0,
-            "semanticscholar_enabled": False,
-            "semanticscholar_has_api_key": False,
-            "semanticscholar_requests_remaining": 0,
-            "googlescholar_enabled": True,
-            "googlescholar_requests_remaining": 3,
-        }
+        client = _FakeClient(
+            {
+                "https://api.openalex.org/works?search=graph+neural+networks&per-page=8&sort=relevance_score%3Adesc": {"results": []},
+                "https://html.duckduckgo.com/html/?q=graph+neural+networks": HttpResponse(body=b"<html></html>", content_type="text/html", final_url="https://html.duckduckgo.com/html/?q=graph+neural+networks"),
+                "https://scholar.google.com/scholar?hl=en&q=graph+neural+networks&num=1": SourceError("google scholar blocked automated access"),
+            }
+        )
+        policy = RetrievalPolicy(client=client, scholar_per_query=0)
+        policy._state["arxiv_enabled"] = False
+        policy._state["googlescholar_enabled"] = True
+        policy._state["googlescholar_requests_remaining"] = 3
 
-        with patch("research_lab.engine.search_openalex", return_value=[]), patch(
-            "research_lab.engine.search_duckduckgo", return_value=[]
-        ), patch(
-            "research_lab.engine.search_google_scholar",
-            side_effect=SourceError("google scholar blocked automated access"),
-        ) as scholar_mock:
-            _search_all_sources(query, brief, object(), warnings, source_state)
-            _search_all_sources(query, brief, object(), warnings, source_state)
+        policy.search(query, brief)
+        policy.search(query, brief)
 
-        self.assertEqual(scholar_mock.call_count, 1)
-        self.assertFalse(source_state["googlescholar_enabled"])
-        self.assertEqual(warnings, ["google scholar disabled after block"])
+        self.assertEqual(policy.warnings, ["google scholar disabled after block"])
+        self.assertFalse(policy._state["googlescholar_enabled"])
 
 
 if __name__ == "__main__":
