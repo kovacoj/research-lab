@@ -1,9 +1,9 @@
-name: opencode-main-review-trigger
+name: opencode-tag-review-trigger
 
 on:
   push:
-    branches:
-      - main
+    tags:
+      - 'v*'
 
 jobs:
   trigger-review:
@@ -14,6 +14,26 @@ jobs:
       contents: read
 
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Resolve previous tag
+        id: prev-tag
+        run: |
+          current_tag="${GITHUB_REF_NAME}"
+          previous_tag="$(git tag --sort=-version:refname | grep -A1 "^${current_tag}$" | tail -1)"
+          if [ -z "$previous_tag" ] || [ "$previous_tag" = "$current_tag" ]; then
+            previous_sha="$(git rev-list --max-parents=0 HEAD)"
+            echo "No previous tag found; using initial commit ${previous_sha}"
+          else
+            previous_sha="$(git rev-list -1 "${previous_tag}")"
+            echo "Previous tag: ${previous_tag} (${previous_sha})"
+          fi
+          echo "previous_sha=${previous_sha}" >> "$GITHUB_OUTPUT"
+
       - name: Dispatch and wait for OpenCode review
         uses: actions/github-script@v7
         with:
@@ -21,8 +41,8 @@ jobs:
             const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
             const owner = context.repo.owner;
             const repo = context.repo.repo;
-            const workflow_id = "opencode-main-review.yml";
-            const beforeSha = context.payload.before;
+            const workflow_id = "opencode-tag-review.yml";
+            const beforeSha = "${{ steps.prev-tag.outputs.previous_sha }}";
             const afterSha = context.sha;
             const startedAt = Date.now();
 
@@ -34,6 +54,7 @@ jobs:
               inputs: {
                 before_sha: beforeSha,
                 after_sha: afterSha,
+                tag_name: context.ref.replace("refs/tags/", ""),
               },
             });
 
