@@ -2,8 +2,8 @@ name: opencode-main-review-trigger
 
 on:
   push:
-    branches:
-      - main
+    tags:
+      - '**'
 
 jobs:
   trigger-review:
@@ -14,16 +14,49 @@ jobs:
       contents: read
 
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
       - name: Dispatch and wait for OpenCode review
         uses: actions/github-script@v7
+        env:
+          TAG_NAME: ${{ github.ref_name }}
         with:
           script: |
             const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
             const owner = context.repo.owner;
             const repo = context.repo.repo;
             const workflow_id = "opencode-main-review.yml";
-            const beforeSha = context.payload.before;
+            const tagName = process.env.TAG_NAME;
             const afterSha = context.sha;
+
+            const { execSync } = require("child_process");
+            let beforeSha;
+            try {
+              const allTags = execSync(
+                `git tag --sort=-version:refname`
+              ).toString().trim().split("\n");
+              const idx = allTags.indexOf(tagName);
+              if (idx >= 0 && idx + 1 < allTags.length) {
+                beforeSha = execSync(`git rev-parse ${allTags[idx + 1]}`).toString().trim();
+              } else {
+                const { data: tags } = await github.rest.repos.listTags({ owner, repo, per_page: 100 });
+                const sorted = tags.map(t => t.name);
+                const tagIdx = sorted.indexOf(tagName);
+                if (tagIdx >= 0 && tagIdx + 1 < sorted.length) {
+                  beforeSha = tags[tagIdx + 1].commit.sha;
+                }
+              }
+            } catch {
+              core.info("Could not determine previous tag; using empty tree as before_sha.");
+            }
+            if (!beforeSha) {
+              beforeSha = "4b825dc642cb6eb9a060e54bf899d69f3f60a850";
+            }
+
             const startedAt = Date.now();
 
             await github.rest.actions.createWorkflowDispatch({
