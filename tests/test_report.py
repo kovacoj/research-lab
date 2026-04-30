@@ -6,6 +6,7 @@ import unittest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from research_lab.models import PaperCandidate, ResearchBrief, RunArtifacts
+from research_lab.report_assembly import assemble_report
 from research_lab.report import write_run_files
 
 
@@ -113,6 +114,33 @@ class ReportTests(unittest.TestCase):
             self.assertIn("## Useful Web Sources", report)
             self.assertIn("Agentic Engineering Explained", report)
             self.assertIn("### ", report)
+
+    def test_assemble_report_groups_results(self) -> None:
+        brief = ResearchBrief(topic="graph neural networks", context="I want strong surveys.", top_k=3)
+        survey = PaperCandidate(
+            title="A compact review of graph neural networks",
+            abstract="A survey article.",
+            url="https://example.com/review",
+            source="openalex",
+            source_id="oa:review",
+            score=0.88,
+            flags=["survey_intent"],
+        )
+        web = PaperCandidate(
+            title="Agentic Engineering Explained",
+            abstract="A practical engineering explainer.",
+            url="https://example.com/blog",
+            source="duckduckgo",
+            source_id="web:blog",
+            document_kind="web",
+            score=0.44,
+        )
+        artifacts = RunArtifacts.create("run-5", "run-5", brief, [], [survey, web], "program")
+
+        assembly = assemble_report(artifacts)
+
+        self.assertEqual([candidate.title for candidate in assembly.broad_intent_matches], [survey.title])
+        self.assertIn("engineering_explainer", assembly.useful_web_groups)
 
 
 if __name__ == "__main__":
