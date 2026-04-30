@@ -5,7 +5,7 @@ import re
 from dataclasses import dataclass
 
 from research_lab.lex import STOPWORDS, tokenize
-from research_lab.models import PaperCandidate, ResearchBrief, RetrievalCandidate
+from research_lab.models import EnrichedCandidate, PaperCandidate, ResearchBrief, RetrievalCandidate, ScoredCandidate
 from research_lab.sources.extraction import FullTextResult, fetch_candidate_full_text
 from research_lab.sources.transport import HttpClient, SourceError
 
@@ -178,3 +178,27 @@ def enrich_candidate(
         evidence=evidence,
         needs_user_article=needs_user_article(paper),
     )
+
+
+def enrich_candidates(
+    candidates: list[ScoredCandidate],
+    brief: ResearchBrief,
+    client: HttpClient,
+) -> tuple[list[EnrichedCandidate], list[str]]:
+    enriched: list[EnrichedCandidate] = []
+    warnings: list[str] = []
+    for candidate in candidates:
+        result = enrich_candidate(candidate, brief, client)
+        enriched_candidate = EnrichedCandidate.from_paper_candidate(candidate.to_paper_candidate())
+        enriched_candidate.access_status = result.access_status
+        enriched_candidate.access_url = result.access_url
+        if not result.text:
+            if result.access_status == "unreadable":
+                warnings.append(f"no readable content found for {enriched_candidate.title}")
+            enriched.append(enriched_candidate)
+            continue
+        enriched_candidate.full_text = result.text
+        enriched_candidate.full_text_source = result.source
+        enriched_candidate.evidence = list(result.evidence)
+        enriched.append(enriched_candidate)
+    return enriched, warnings

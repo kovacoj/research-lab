@@ -4,7 +4,6 @@ from datetime import datetime, timezone
 import math
 import re
 
-from research_lab.enrichment import extract_evidence_sentences
 from research_lab.identity import candidates_match, normalize_title
 from research_lab.lex import STOPWORDS, tokenize
 from research_lab.models import PaperCandidate, ResearchBrief, RetrievalCandidate, ScoredCandidate
