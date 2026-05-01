@@ -6,6 +6,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from research_lab.engine import _expansion_seed_candidates
 from research_lab.models import PaperCandidate, QueryRecord, ResearchBrief
+from research_lab.retrieval_plan import RetrievalPlan
 from research_lab.retrieval import RetrievalPolicy
 from research_lab.search_session import SearchSession
 from research_lab.sources import HttpClient, HttpResponse, SourceError
@@ -32,6 +33,14 @@ class _FakeClient(HttpClient):
 
 
 class EngineTests(unittest.TestCase):
+    def test_retrieval_plan_skips_low_value_expansions_without_api_key(self) -> None:
+        plan = RetrievalPlan(has_semantic_scholar_api_key=False, scholar_per_query=1)
+        plan.semantic_scholar.enabled = True
+        plan.semantic_scholar.requests_remaining = 5
+        query = QueryRecord(query='"Jane Doe" graph neural networks', origin="author_expansion", iteration=1)
+
+        self.assertFalse(plan.should_use_semantic_scholar(query))
+
     def test_search_session_records_unique_queries(self) -> None:
         brief = ResearchBrief(topic="graph neural networks", context="")
         session = SearchSession(brief)
