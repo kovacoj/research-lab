@@ -124,33 +124,9 @@ def _classify_html_access(candidate: Candidate, response: HttpResponse) -> FullT
 
 
 def fetch_candidate_full_text(candidate: Candidate, client: HttpClient) -> FullTextResult:
-    last_result = FullTextResult(text="", source="", access_status="", access_url="")
-    last_error: SourceError | None = None
-    for url in [candidate.open_access_url, candidate.url]:
-        if not url:
-            continue
-        try:
-            response = client.fetch(url, headers={"Accept": "text/html,application/pdf;q=0.9,*/*;q=0.8"})
-        except SourceError as exc:
-            last_result = _classify_fetch_error(url, exc)
-            last_error = exc
-            continue
-        content_type = response.content_type.lower()
-        if "pdf" in content_type or response.final_url.lower().endswith(".pdf") or url.lower().endswith(".pdf"):
-            text = _extract_text_from_pdf_bytes(response.body)
-            if text:
-                return FullTextResult(text=text, source="pdf", access_status="open", access_url=response.final_url)
-            last_result = FullTextResult(text="", source="", access_status="unreadable", access_url=response.final_url)
-            continue
-        result = _classify_html_access(candidate, response)
-        if result.text:
-            return result
-        last_result = result
-    if last_result.access_status:
-        return last_result
-    if last_error is not None:
-        raise last_error
-    raise SourceError(f"no reachable content found for {candidate.title}")
+    from research_lab.document_access import DocumentAccessResolver
+
+    return DocumentAccessResolver(client).fetch(candidate)
 
 
 def _extract_text_from_html(html: str) -> str:

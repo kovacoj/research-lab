@@ -6,10 +6,21 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from research_lab.enrichment import extract_evidence_sentences
 from research_lab.models import PaperCandidate, ResearchBrief
-from research_lab.rank import dedupe_candidates, rank_candidates
+from research_lab.rank import _score_constraints, dedupe_candidates, rank_candidates
 
 
 class RankTests(unittest.TestCase):
+    def test_score_constraints_sets_drift_flag(self) -> None:
+        brief = ResearchBrief(topic="test-time adaptation for language models", context="")
+        topic_terms = {"test-time", "adaptation", "language", "models"}
+        text_terms = {"robotic", "language", "model", "adaptation", "manipulation"}
+
+        score, reasons, flags = _score_constraints(brief, topic_terms, text_terms, "robotic language model adaptation")
+
+        self.assertLess(score, 0)
+        self.assertTrue(any("drift" in reason for reason in reasons))
+        self.assertIn("drift", flags)
+
     def test_dedupe_prefers_richer_candidate(self) -> None:
         first = PaperCandidate(
             title="A Useful Paper",

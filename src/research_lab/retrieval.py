@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import os
+from collections.abc import MutableMapping
 
 from research_lab.models import Candidate, QueryRecord, ResearchBrief
+from research_lab.retrieval_plan import RetrievalPlan
 from research_lab.sources import (
     HttpClient,
     SourceError,
@@ -20,21 +22,17 @@ class RetrievalPolicy:
         semantic_scholar_api_key = os.getenv("SEMANTIC_SCHOLAR_API_KEY", "").strip()
         self.client = client or HttpClient()
         self.warnings: list[str] = []
-        self._state: dict[str, object] = {
-            "arxiv_enabled": True,
-            "arxiv_requests_remaining": 6,
-            "semanticscholar_enabled": bool(semantic_scholar_api_key),
-            "semanticscholar_has_api_key": bool(semantic_scholar_api_key),
-            "semanticscholar_requests_remaining": 999 if semantic_scholar_api_key else 0,
-            "googlescholar_enabled": scholar_per_query > 0,
-            "googlescholar_requests_remaining": 3 if scholar_per_query > 0 else 0,
-        }
+        self.plan = RetrievalPlan(
+            has_semantic_scholar_api_key=bool(semantic_scholar_api_key),
+            scholar_per_query=scholar_per_query,
+        )
+        self._state = _RetrievalStateView(self.plan)
 
     def search(self, query: QueryRecord, brief: ResearchBrief) -> list[Candidate]:
         collected: list[Candidate] = []
-        if self._should_use_arxiv(query):
+        if self.plan.should_use_arxiv(query):
             try:
-                self._state["arxiv_requests_remaining"] = int(self._state["arxiv_requests_remaining"]) - 1
+                self.plan.arxiv.consume()
                 collected.extend(self._annotate(query, search_arxiv(query.query, brief.per_query, brief.since_year, self.client)))
             except SourceError as exc:
                 self._handle_arxiv_error(exc)
@@ -42,9 +40,9 @@ class RetrievalPolicy:
             collected.extend(self._annotate(query, search_openalex(query.query, brief.per_query, brief.since_year, self.client)))
         except SourceError as exc:
             self.warnings.append(str(exc))
-        if self._should_use_semantic_scholar(query):
+        if self.plan.should_use_semantic_scholar(query):
             try:
-                self._state["semanticscholar_requests_remaining"] = int(self._state["semanticscholar_requests_remaining"]) - 1
+                self.plan.semantic_scholar.consume()
                 collected.extend(self._annotate(query, search_semantic_scholar(query.query, brief.per_query, brief.since_year, self.client)))
             except SourceError as exc:
                 self._handle_semantic_scholar_error(exc)
@@ -52,21 +50,21 @@ class RetrievalPolicy:
             collected.extend(self._annotate(query, search_duckduckgo(query.query, brief.web_per_query, self.client)))
         except SourceError as exc:
             self.warnings.append(str(exc))
-        if self._should_use_google_scholar(query):
+        if self.plan.should_use_google_scholar(query):
             try:
-                self._state["googlescholar_requests_remaining"] = int(self._state["googlescholar_requests_remaining"]) - 1
+                self.plan.google_scholar.consume()
                 collected.extend(self._annotate(query, search_google_scholar(query.query, brief.scholar_per_query, self.client)))
             except SourceError as exc:
                 self._handle_google_scholar_error(exc)
         return collected
 
     def fetch_references(self, candidate: Candidate, per_query: int) -> list[Candidate]:
-        if not self._should_use_semantic_scholar(None):
+        if not self.plan.should_use_semantic_scholar(None):
             return []
         if not candidate.source_id or not candidate.source.startswith("semanticscholar"):
             return []
         try:
-            self._state["semanticscholar_requests_remaining"] = int(self._state["semanticscholar_requests_remaining"]) - 1
+            self.plan.semantic_scholar.consume()
             references = fetch_semantic_scholar_references(candidate.source_id, per_query, self.client)
         except SourceError as exc:
             self._handle_semantic_scholar_error(exc)
@@ -83,49 +81,46 @@ class RetrievalPolicy:
     def _handle_arxiv_error(self, exc: SourceError) -> None:
         message = str(exc)
         if "HTTP Error 429" in message or "timed out" in message:
-            if self._state["arxiv_enabled"]:
+            if self.plan.arxiv.enabled:
                 self.warnings.append("arxiv disabled after rate limit")
-            self._state["arxiv_enabled"] = False
+            self.plan.arxiv.disable()
             return
         self.warnings.append(message)
 
     def _handle_semantic_scholar_error(self, exc: SourceError) -> None:
         if "HTTP Error 429" in str(exc):
-            if self._state["semanticscholar_enabled"]:
+            if self.plan.semantic_scholar.enabled:
                 self.warnings.append("semantic scholar disabled after rate limit")
-            self._state["semanticscholar_enabled"] = False
+            self.plan.semantic_scholar.disable()
             return
         self.warnings.append(str(exc))
 
     def _handle_google_scholar_error(self, exc: SourceError) -> None:
         if "google scholar blocked automated access" in str(exc):
-            if self._state["googlescholar_enabled"]:
+            if self.plan.google_scholar.enabled:
                 self.warnings.append("google scholar disabled after block")
-            self._state["googlescholar_enabled"] = False
+            self.plan.google_scholar.disable()
             return
         self.warnings.append(str(exc))
 
-    def _should_use_arxiv(self, query: QueryRecord) -> bool:
-        if not self._state["arxiv_enabled"]:
-            return False
-        if int(self._state["arxiv_requests_remaining"]) <= 0:
-            return False
-        return query.origin not in {"author_expansion", "title_expansion"}
 
-    def _should_use_semantic_scholar(self, query: QueryRecord | None) -> bool:
-        if not self._state["semanticscholar_enabled"]:
-            return False
-        if int(self._state["semanticscholar_requests_remaining"]) <= 0:
-            return False
-        if bool(self._state["semanticscholar_has_api_key"]):
-            return True
-        if query is None:
-            return True
-        return query.origin not in {"author_expansion", "title_expansion"}
+class _RetrievalStateView(MutableMapping[str, object]):
+    def __init__(self, plan: RetrievalPlan) -> None:
+        self.plan = plan
 
-    def _should_use_google_scholar(self, query: QueryRecord) -> bool:
-        if not self._state["googlescholar_enabled"]:
-            return False
-        if int(self._state["googlescholar_requests_remaining"]) <= 0:
-            return False
-        return query.origin not in {"author_expansion", "title_expansion"}
+    def __getitem__(self, key: str) -> object:
+        return self.plan.state()[key]
+
+    def __setitem__(self, key: str, value: object) -> None:
+        state = self.plan.state()
+        state[key] = value
+        self.plan.load_state(state)
+
+    def __delitem__(self, key: str) -> None:
+        raise KeyError(key)
+
+    def __iter__(self):
+        return iter(self.plan.state())
+
+    def __len__(self) -> int:
+        return len(self.plan.state())
