@@ -4,9 +4,10 @@ import re
 
 from dataclasses import dataclass
 
+from research_lab.document_access import DocumentAccessResolver
 from research_lab.lex import STOPWORDS, tokenize
 from research_lab.models import Candidate, ResearchBrief
-from research_lab.sources.extraction import FullTextResult, fetch_candidate_full_text
+from research_lab.sources.extraction import FullTextResult
 from research_lab.sources.transport import HttpClient, SourceError
 
 
@@ -143,8 +144,9 @@ def enrich_candidate(
     brief: ResearchBrief,
     client: HttpClient,
 ) -> EnrichmentResult:
+    resolver = DocumentAccessResolver(client)
     try:
-        result = fetch_candidate_full_text(candidate, client)
+        result = resolver.fetch(candidate)
     except SourceError:
         return EnrichmentResult(
             text="",
