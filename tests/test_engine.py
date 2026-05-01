@@ -7,6 +7,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from research_lab.engine import _expansion_seed_candidates
 from research_lab.models import PaperCandidate, QueryRecord, ResearchBrief
 from research_lab.retrieval import RetrievalPolicy
+from research_lab.search_session import SearchSession
 from research_lab.sources import HttpClient, HttpResponse, SourceError
 
 
@@ -31,6 +32,18 @@ class _FakeClient(HttpClient):
 
 
 class EngineTests(unittest.TestCase):
+    def test_search_session_records_unique_queries(self) -> None:
+        brief = ResearchBrief(topic="graph neural networks", context="")
+        session = SearchSession(brief)
+        query = QueryRecord(query="graph neural networks", origin="topic", iteration=0)
+
+        first = session._record_query(query)
+        second = session._record_query(query)
+
+        self.assertTrue(first)
+        self.assertFalse(second)
+        self.assertEqual(session.queries, [query])
+
     def test_expansion_seed_candidates_prefer_clean_papers(self) -> None:
         brief = ResearchBrief(topic="mixed precision training", context="", must_include=["mixed precision", "float16", "loss scaling"])
         web = PaperCandidate(
