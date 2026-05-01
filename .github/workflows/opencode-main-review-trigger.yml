@@ -1,4 +1,4 @@
-name: opencode-main-review-trigger
+name: opencode-tag-review-trigger
 
 on:
   push:

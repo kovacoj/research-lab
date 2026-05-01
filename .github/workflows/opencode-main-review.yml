@@ -1,4 +1,4 @@
-name: opencode-main-review
+name: opencode-tag-review
 
 on:
   workflow_dispatch:
