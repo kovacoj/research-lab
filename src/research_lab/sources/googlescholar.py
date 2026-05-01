@@ -5,6 +5,7 @@ import re
 import urllib.parse
 
 from research_lab.models import Candidate
+from research_lab.source_candidates import paper_candidate
 from research_lab.sources.extraction import _clean_text, _extract_year
 from research_lab.sources.transport import HttpClient, SourceError
 
@@ -145,7 +146,7 @@ def search_google_scholar(query: str, limit: int, client: HttpClient) -> list[Ca
     parser.feed(html)
     parser.close()
     return [
-        Candidate(
+        paper_candidate(
             title=_clean_scholar_title(item["title"]),
             abstract=item["snippet"],
             url=item["url"],
@@ -156,7 +157,6 @@ def search_google_scholar(query: str, limit: int, client: HttpClient) -> list[Ca
             venue=_parse_scholar_venue(item["meta"], _extract_year(item["meta"])),
             open_access_url=item.get("open_access_url", ""),
             snippet=item["snippet"],
-            source_names=["googlescholar"],
         )
         for item in parser.results[:limit]
     ]

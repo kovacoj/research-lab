@@ -4,6 +4,7 @@ import os
 import urllib.parse
 
 from research_lab.models import Candidate
+from research_lab.source_candidates import paper_candidate
 from research_lab.sources.transport import HttpClient
 
 
@@ -22,10 +23,11 @@ def search_semantic_scholar(query: str, limit: int, since_year: int | None, clie
     for item in payload.get("data", []):
         external_ids = item.get("externalIds") or {}
         open_access_pdf = item.get("openAccessPdf") or {}
+        abstract = item.get("abstract") or ""
         results.append(
-            Candidate(
+            paper_candidate(
                 title=item.get("title") or "",
-                abstract=item.get("abstract") or "",
+                abstract=abstract,
                 url=item.get("url") or "",
                 source="semanticscholar",
                 source_id=item.get("paperId") or "",
@@ -35,9 +37,8 @@ def search_semantic_scholar(query: str, limit: int, since_year: int | None, clie
                 doi=external_ids.get("DOI") or "",
                 citation_count=item.get("citationCount") or 0,
                 open_access_url=open_access_pdf.get("url") or "",
-                snippet=item.get("abstract") or "",
+                snippet=abstract,
                 fields_of_study=item.get("fieldsOfStudy") or [],
-                source_names=["semanticscholar"],
             )
         )
     return results
@@ -62,10 +63,11 @@ def fetch_semantic_scholar_references(paper_id: str, limit: int, client: HttpCli
         cited = item.get("citedPaper") or item
         external_ids = cited.get("externalIds") or {}
         open_access_pdf = cited.get("openAccessPdf") or {}
+        abstract = cited.get("abstract") or ""
         results.append(
-            Candidate(
+            paper_candidate(
                 title=cited.get("title") or "",
-                abstract=cited.get("abstract") or "",
+                abstract=abstract,
                 url=cited.get("url") or "",
                 source="semanticscholar_reference",
                 source_id=cited.get("paperId") or "",
@@ -75,9 +77,8 @@ def fetch_semantic_scholar_references(paper_id: str, limit: int, client: HttpCli
                 doi=external_ids.get("DOI") or "",
                 citation_count=cited.get("citationCount") or 0,
                 open_access_url=open_access_pdf.get("url") or "",
-                snippet=cited.get("abstract") or "",
+                snippet=abstract,
                 fields_of_study=cited.get("fieldsOfStudy") or [],
-                source_names=["semanticscholar_reference"],
             )
         )
     return results

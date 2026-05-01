@@ -4,6 +4,7 @@ import urllib.parse
 import xml.etree.ElementTree as ET
 
 from research_lab.models import Candidate
+from research_lab.source_candidates import paper_candidate
 from research_lab.sources.extraction import _clean_text, _extract_year
 from research_lab.sources.transport import HttpClient, SourceError
 
@@ -37,7 +38,7 @@ def search_arxiv(query: str, limit: int, since_year: int | None, client: HttpCli
                 pdf_url = link.attrib.get("href", "")
                 break
         results.append(
-            Candidate(
+            paper_candidate(
                 title=title,
                 abstract=abstract,
                 url=paper_url,
@@ -49,7 +50,6 @@ def search_arxiv(query: str, limit: int, since_year: int | None, client: HttpCli
                 doi=_clean_text(entry.findtext("arxiv:doi", default="", namespaces=namespace)),
                 open_access_url=pdf_url,
                 snippet=abstract,
-                source_names=["arxiv"],
             )
         )
         if len(results) >= limit:

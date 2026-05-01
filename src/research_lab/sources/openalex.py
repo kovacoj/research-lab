@@ -4,6 +4,7 @@ import os
 import urllib.parse
 
 from research_lab.models import Candidate
+from research_lab.source_candidates import paper_candidate
 from research_lab.sources.transport import HttpClient
 
 
@@ -46,10 +47,11 @@ def search_openalex(query: str, per_page: int, since_year: int | None, client: H
         primary_location = item.get("primary_location") or {}
         oa_location = item.get("best_oa_location") or {}
         authorships = item.get("authorships") or []
+        abstract = _join_abstract(item.get("abstract_inverted_index"))
         results.append(
-            Candidate(
+            paper_candidate(
                 title=item.get("title") or "",
-                abstract=_join_abstract(item.get("abstract_inverted_index")),
+                abstract=abstract,
                 url=(primary_location.get("landing_page_url") or item.get("id") or ""),
                 source="openalex",
                 source_id=item.get("id") or "",
@@ -59,9 +61,8 @@ def search_openalex(query: str, per_page: int, since_year: int | None, client: H
                 doi=_extract_doi(item.get("doi")),
                 citation_count=item.get("cited_by_count") or 0,
                 open_access_url=oa_location.get("pdf_url") or "",
-                snippet=_join_abstract(item.get("abstract_inverted_index")),
+                snippet=abstract,
                 fields_of_study=[topic.get("display_name", "") for topic in item.get("topics") or []],
-                source_names=["openalex"],
             )
         )
     return results

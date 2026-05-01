@@ -4,6 +4,7 @@ from html.parser import HTMLParser
 import urllib.parse
 
 from research_lab.models import Candidate
+from research_lab.source_candidates import web_candidate
 from research_lab.sources.extraction import _clean_text
 from research_lab.sources.transport import HttpClient
 
@@ -79,16 +80,13 @@ def search_duckduckgo(query: str, limit: int, client: HttpClient) -> list[Candid
     parser.feed(response.body.decode("utf-8", errors="ignore"))
     parser.close()
     return [
-        Candidate(
+        web_candidate(
             title=item["title"],
             abstract=item["snippet"],
             url=item["url"],
             source="duckduckgo",
             source_id=item["url"],
             venue=_url_host(item["url"]),
-            document_kind="web",
-            snippet=item["snippet"],
-            source_names=["duckduckgo"],
         )
         for item in parser.results[:limit]
     ]
