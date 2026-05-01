@@ -165,22 +165,21 @@ def _add_flag(flags: list[str], flag: str) -> None:
         flags.append(flag)
 
 
-def score_candidate(candidate: Candidate, brief: ResearchBrief) -> Candidate:
-    candidate = candidate.copy()
-    topic_terms = _keyword_set(brief.topic)
-    context_terms = _keyword_set(brief.context)
-    title_terms = _keyword_set(candidate.title)
-    abstract_terms = _keyword_set(candidate.abstract or candidate.snippet)
-    full_text_terms = _keyword_set(candidate.full_text)
-    text_terms = title_terms | abstract_terms | full_text_terms
-    topic_bigrams = _bigram_set(brief.topic)
-    text_bigrams = _bigram_set(f"{candidate.title} {candidate.abstract} {candidate.full_text}")
-    topic_facets = _topic_facets(brief.topic)
-    searchable_text = f"{candidate.title} {candidate.abstract} {candidate.snippet} {candidate.full_text}"
-    searchable_norm = normalize_title(searchable_text)
-    searchable_lower = searchable_text.lower()
-    title_norm = normalize_title(candidate.title)
-
+def _score_topic_alignment(
+    candidate: Candidate,
+    brief: ResearchBrief,
+    topic_terms: set[str],
+    title_terms: set[str],
+    abstract_terms: set[str],
+    full_text_terms: set[str],
+    text_terms: set[str],
+    topic_bigrams: set[str],
+    text_bigrams: set[str],
+    topic_facets: list[str],
+    searchable_text: str,
+    searchable_norm: str,
+    title_norm: str,
+) -> tuple[float, list[str], list[str]]:
     score = 0.0
     reasons: list[str] = []
     flags: list[str] = []
@@ -226,12 +225,44 @@ def score_candidate(candidate: Candidate, brief: ResearchBrief) -> Candidate:
         if len(topic_facets) > 1 and covered_facets < len(topic_facets):
             score -= (len(topic_facets) - covered_facets) * 0.04
 
+    return score, reasons, flags
+
+
+def _score_context_alignment(
+    candidate: Candidate,
+    brief: ResearchBrief,
+    context_terms: set[str],
+    text_terms: set[str],
+    searchable_lower: str,
+    title_norm: str,
+) -> tuple[float, list[str], list[str]]:
+    score = 0.0
+    reasons: list[str] = []
+    flags: list[str] = []
+
     context_overlap = len(context_terms & text_terms)
     if context_terms:
         context_ratio = context_overlap / len(context_terms)
         score += min(context_ratio, 0.4) * 0.2
         if context_overlap:
             reasons.append(f"context overlap {context_overlap}/{len(context_terms)}")
+
+    if title_norm and title_norm in normalize_title(brief.context):
+        score -= 0.08
+        reasons.append("already mentioned in context")
+
+    intent_bonus, intent_reasons, intent_flags = _context_intent_bonus(candidate, brief, searchable_lower)
+    score += intent_bonus
+    reasons.extend(intent_reasons)
+    for flag in intent_flags:
+        _add_flag(flags, flag)
+
+    return score, reasons, flags
+
+
+def _score_metadata(candidate: Candidate) -> tuple[float, list[str], list[str]]:
+    score = 0.0
+    reasons: list[str] = []
 
     if candidate.abstract:
         score += 0.05
@@ -276,16 +307,30 @@ def score_candidate(candidate: Candidate, brief: ResearchBrief) -> Candidate:
         score -= 0.08
         reasons.append("light metadata")
 
+    return score, reasons, []
+
+
+def _score_evidence(candidate: Candidate) -> tuple[float, list[str], list[str]]:
+    score = 0.0
+    reasons: list[str] = []
     if candidate.full_text:
         score += 0.03
         reasons.append("full text fetched")
     if candidate.evidence:
         score += min(len(candidate.evidence), 3) * 0.03
         reasons.append(f"{len(candidate.evidence)} evidence snippets")
+    return score, reasons, []
 
-    if title_norm and title_norm in normalize_title(brief.context):
-        score -= 0.08
-        reasons.append("already mentioned in context")
+
+def _score_constraints(
+    brief: ResearchBrief,
+    topic_terms: set[str],
+    text_terms: set[str],
+    searchable_lower: str,
+) -> tuple[float, list[str], list[str]]:
+    score = 0.0
+    reasons: list[str] = []
+    flags: list[str] = []
 
     if brief.must_include:
         include_hits = sum(1 for term in brief.must_include if term.lower() in searchable_lower)
@@ -311,11 +356,54 @@ def score_candidate(candidate: Candidate, brief: ResearchBrief) -> Candidate:
     if any("drift" in reason for reason in mismatch_reasons):
         _add_flag(flags, "drift")
 
-    intent_bonus, intent_reasons, intent_flags = _context_intent_bonus(candidate, brief, searchable_lower)
-    score += intent_bonus
-    reasons.extend(intent_reasons)
-    for flag in intent_flags:
-        _add_flag(flags, flag)
+    return score, reasons, flags
+
+
+def score_candidate(candidate: Candidate, brief: ResearchBrief) -> Candidate:
+    candidate = candidate.copy()
+    topic_terms = _keyword_set(brief.topic)
+    context_terms = _keyword_set(brief.context)
+    title_terms = _keyword_set(candidate.title)
+    abstract_terms = _keyword_set(candidate.abstract or candidate.snippet)
+    full_text_terms = _keyword_set(candidate.full_text)
+    text_terms = title_terms | abstract_terms | full_text_terms
+    topic_bigrams = _bigram_set(brief.topic)
+    text_bigrams = _bigram_set(f"{candidate.title} {candidate.abstract} {candidate.full_text}")
+    topic_facets = _topic_facets(brief.topic)
+    searchable_text = f"{candidate.title} {candidate.abstract} {candidate.snippet} {candidate.full_text}"
+    searchable_norm = normalize_title(searchable_text)
+    searchable_lower = searchable_text.lower()
+    title_norm = normalize_title(candidate.title)
+
+    score = 0.0
+    reasons: list[str] = []
+    flags: list[str] = []
+
+    for signal_score, signal_reasons, signal_flags in [
+        _score_topic_alignment(
+            candidate,
+            brief,
+            topic_terms,
+            title_terms,
+            abstract_terms,
+            full_text_terms,
+            text_terms,
+            topic_bigrams,
+            text_bigrams,
+            topic_facets,
+            searchable_text,
+            searchable_norm,
+            title_norm,
+        ),
+        _score_context_alignment(candidate, brief, context_terms, text_terms, searchable_lower, title_norm),
+        _score_metadata(candidate),
+        _score_evidence(candidate),
+        _score_constraints(brief, topic_terms, text_terms, searchable_lower),
+    ]:
+        score += signal_score
+        reasons.extend(signal_reasons)
+        for flag in signal_flags:
+            _add_flag(flags, flag)
 
     candidate.score = round(score, 4)
     candidate.reasons = reasons
