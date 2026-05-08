@@ -22,7 +22,7 @@ permissions:
 
 concurrency:
   group: update-readme-issues
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   update-readme:
@@ -110,4 +110,5 @@ jobs:
           GIT_COMMITTER_NAME="github-actions[bot]" \
           GIT_COMMITTER_EMAIL="41898282+github-actions[bot]@users.noreply.github.com" \
           git commit -m "docs(readme): update issue index"
+          git pull --rebase origin HEAD
           git push
