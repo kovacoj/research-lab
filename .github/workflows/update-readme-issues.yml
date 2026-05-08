@@ -1,0 +1,110 @@
+name: update-readme-issues
+
+on:
+  issues:
+    types:
+      - opened
+      - edited
+      - closed
+      - reopened
+      - labeled
+      - unlabeled
+      - assigned
+      - unassigned
+      - transferred
+  workflow_dispatch:
+  schedule:
+    - cron: "17 */6 * * *"
+
+permissions:
+  contents: write
+  issues: read
+
+concurrency:
+  group: update-readme-issues
+  cancel-in-progress: true
+
+jobs:
+  update-readme:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Generate README issue list
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 <<'PY'
+          import json
+          import re
+          import subprocess
+          from pathlib import Path
+
+          readme_path = Path("README.md")
+
+          if not readme_path.exists():
+              raise SystemExit("README.md does not exist")
+
+          issues_json = subprocess.check_output(
+              [
+                  "gh",
+                  "issue",
+                  "list",
+                  "--state",
+                  "open",
+                  "--limit",
+                  "200",
+                  "--json",
+                  "number,title,url",
+              ],
+              text=True,
+          )
+
+          issues = json.loads(issues_json)
+
+          start_marker = "<!-- issues:start -->"
+          end_marker = "<!-- issues:end -->"
+
+          lines = [start_marker]
+
+          if issues:
+              for issue in issues:
+                  number = issue["number"]
+                  title = issue["title"].replace("\n", " ").strip()
+                  url = issue["url"]
+                  lines.append(f"- [#{number}]({url}) {title}")
+          else:
+              lines.append("_No open issues._")
+
+          lines.append(end_marker)
+          new_block = "\n".join(lines)
+
+          text = readme_path.read_text(encoding="utf-8")
+
+          if start_marker in text and end_marker in text:
+              pattern = re.escape(start_marker) + r".*?" + re.escape(end_marker)
+              text = re.sub(pattern, new_block, text, flags=re.DOTALL)
+          elif "## Issues" in text:
+              text = text.replace("## Issues", f"## Issues\n\n{new_block}", 1)
+          else:
+              text = text.rstrip() + f"\n\n## Issues\n\n{new_block}\n"
+
+          readme_path.write_text(text, encoding="utf-8")
+          PY
+
+      - name: Commit README update
+        run: |
+          if git diff --quiet -- README.md; then
+            echo "README.md already up to date"
+            exit 0
+          fi
+
+          git add README.md
+          GIT_AUTHOR_NAME="github-actions[bot]" \
+          GIT_AUTHOR_EMAIL="41898282+github-actions[bot]@users.noreply.github.com" \
+          GIT_COMMITTER_NAME="github-actions[bot]" \
+          GIT_COMMITTER_EMAIL="41898282+github-actions[bot]@users.noreply.github.com" \
+          git commit -m "docs(readme): update issue index"
+          git push

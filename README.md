@@ -221,3 +221,8 @@ If you run OpenCode inside this repo, there are prompt files under `.opencode/ag
 - preparing `brief.md`
 - reviewing a run against a previous run
 - drilling into evidence for a specific claim or argument
+
+## Issues
+
+<!-- issues:start -->
+<!-- issues:end -->
