@@ -225,5 +225,5 @@ If you run OpenCode inside this repo, there are prompt files under `.opencode/ag
 ## Issues
 
 <!-- issues:start -->
-- [#44](https://github.com/kovacoj/research-lab/issues/44) node js deprecacy warning
+- [#47](https://github.com/kovacoj/research-lab/issues/47) closed issue present in the README as an active issue
 <!-- issues:end -->
