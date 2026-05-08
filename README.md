@@ -225,5 +225,5 @@ If you run OpenCode inside this repo, there are prompt files under `.opencode/ag
 ## Issues
 
 <!-- issues:start -->
-- [#46](https://github.com/kovacoj/research-lab/issues/46) hanging feat branch
+- [#47](https://github.com/kovacoj/research-lab/issues/47) closed issue present in the README as an active issue
 <!-- issues:end -->
