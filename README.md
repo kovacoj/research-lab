@@ -225,5 +225,5 @@ If you run OpenCode inside this repo, there are prompt files under `.opencode/ag
 ## Issues
 
 <!-- issues:start -->
-- [#42](https://github.com/kovacoj/research-lab/issues/42) automatic issue filing
+_No open issues._
 <!-- issues:end -->
