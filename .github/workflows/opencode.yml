@@ -23,8 +23,10 @@ jobs:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
     permissions:
-      contents: read
+      contents: write
       id-token: write
+      issues: write
+      pull-requests: write
 
     steps:
       - name: Checkout repository
@@ -41,6 +43,8 @@ jobs:
       - name: Run OpenCode
         uses: anomalyco/opencode/github@latest
         env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ github.token }}
           SIEMENS_LLM_API_KEY: ${{ secrets.SIEMENS_LLM_API_KEY }}
           OPENCODE_CONFIG_CONTENT: |
             {
