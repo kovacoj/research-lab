@@ -10,7 +10,6 @@ on:
 
 permissions:
   contents: read
-  id-token: write
   pull-requests: write
 
 concurrency:
@@ -39,6 +38,17 @@ jobs:
           persist-credentials: false
           ref: ${{ github.event.pull_request.head.sha }}
 
+      - name: Create GLM-5 reviewer bot token
+        id: glm5-reviewer-token
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.GLM5_REVIEWER_APP_CLIENT_ID }}
+          private-key: ${{ secrets.GLM5_REVIEWER_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: research-lab
+          permission-contents: read
+          permission-pull-requests: write
+
       - name: Install OpenCode
         run: curl -fsSL https://opencode.ai/install | bash
 
@@ -47,7 +57,7 @@ jobs:
 
       - name: Prepare PR review context
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ steps.glm5-reviewer-token.outputs.token }}
         run: |
           mkdir -p "$REVIEW_DIR"
           python3 <<'PY'
@@ -142,7 +152,7 @@ jobs:
 
       - name: Remove previous OpenCode review comments
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ steps.glm5-reviewer-token.outputs.token }}
         run: |
           python3 <<'PY'
           import json
@@ -226,7 +236,7 @@ jobs:
 
       - name: Publish inline review comments
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ steps.glm5-reviewer-token.outputs.token }}
         run: |
           python3 <<'PY'
           import json
