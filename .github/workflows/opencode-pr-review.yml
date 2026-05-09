@@ -250,7 +250,13 @@ jobs:
               f"{os.environ['GITHUB_SERVER_URL']}/{repo}/actions/runs/{os.environ['GITHUB_RUN_ID']}"
           )
 
-          findings_doc = json.loads(findings_path.read_text(encoding="utf-8"))
+          if not findings_path.exists():
+              findings_doc = {"summary": "", "findings": []}
+          else:
+              try:
+                  findings_doc = json.loads(findings_path.read_text(encoding="utf-8"))
+              except json.JSONDecodeError:
+                  findings_doc = {"summary": "", "findings": []}
           changed_lines = json.loads(changed_lines_path.read_text(encoding="utf-8"))
 
           findings = findings_doc.get("findings") or []
