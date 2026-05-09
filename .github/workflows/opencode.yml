@@ -41,7 +41,7 @@ jobs:
           git config --global user.email "219766164+opencode-agent[bot]@users.noreply.github.com"
 
       - name: Run OpenCode
-        uses: anomalyco/opencode/github@latest
+        uses: anomalyco/opencode/github@v1.14.41
         env:
           GITHUB_TOKEN: ${{ github.token }}
           GH_TOKEN: ${{ github.token }}
