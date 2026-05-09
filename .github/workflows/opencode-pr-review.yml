@@ -44,6 +44,8 @@ jobs:
         with:
           client-id: ${{ vars.GLM5_REVIEWER_APP_CLIENT_ID }}
           private-key: ${{ secrets.GLM5_REVIEWER_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: research-lab
           permission-contents: read
           permission-pull-requests: write
 
