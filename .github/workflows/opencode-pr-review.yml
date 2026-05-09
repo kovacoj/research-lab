@@ -1,0 +1,66 @@
+name: opencode-pr-review
+
+on:
+  pull_request:
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - ready_for_review
+
+permissions:
+  contents: read
+  id-token: write
+  pull-requests: write
+
+concurrency:
+  group: opencode-pr-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    if: ${{ !github.event.pull_request.draft && github.event.pull_request.head.repo.full_name == github.repository }}
+    runs-on: ubuntu-latest
+
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Run OpenCode PR review
+        uses: anomalyco/opencode/github@v1.14.41
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ github.token }}
+          SIEMENS_LLM_API_KEY: ${{ secrets.SIEMENS_LLM_API_KEY }}
+          OPENCODE_CONFIG_CONTENT: |
+            {
+              "model": "siemens/glm-5",
+              "small_model": "siemens/ministral-3-14b-instruct-2512",
+              "enabled_providers": ["siemens"],
+              "share": "disabled"
+            }
+        with:
+          model: siemens/glm-5
+          share: false
+          prompt: |
+            Review pull request #${{ github.event.pull_request.number }} (`${{ github.event.pull_request.title }}`) from `${{ github.event.pull_request.base.sha }}` to `${{ github.event.pull_request.head.sha }}`.
+
+            Scope:
+            - Review only the pull request diff for correctness bugs, regressions, security issues, broken behavior, maintainability hazards, and missing tests that could hide a defect.
+            - Ignore minor formatting or style-only nits.
+            - Do not modify code, do not create commits, do not push branches, and do not open issues or pull requests.
+            - Do not install dependencies, run tests, or execute code from this pull request.
+
+            Outcome:
+            - If you find no material problem, finish without leaving feedback.
+            - If you find a material problem, leave exactly one top-level review on this pull request for the current head SHA.
+            - Keep feedback to high-confidence findings only.
+            - Include file paths, the problem, why it matters, and a suggested fix.
+            - Prefer a concise findings-first review over inline nitpicks.
