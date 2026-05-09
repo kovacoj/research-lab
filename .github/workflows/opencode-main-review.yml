@@ -66,7 +66,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          count="$(gh issue list --state open --search "[auto-review] ${{ inputs.after_sha }}" --json number --jq length 2>/dev/null || echo 0)"
+          count="$(gh issue list --repo "${{ github.repository }}" --state open --search "\"[auto-review]\" \"${{ inputs.after_sha }}\"" --json number --jq length)"
           if [ "$count" -gt 0 ]; then
             echo "OpenCode found a material problem and created an issue."
             exit 1
