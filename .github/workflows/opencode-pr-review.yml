@@ -244,7 +244,13 @@ jobs:
           changed_lines_path = review_dir / "changed-lines.json"
           summary_path = pathlib.Path(os.environ["GITHUB_STEP_SUMMARY"])
 
-          findings_doc = json.loads(findings_path.read_text(encoding="utf-8"))
+          if not findings_path.exists():
+              findings_doc = {"summary": "", "findings": []}
+          else:
+              try:
+                  findings_doc = json.loads(findings_path.read_text(encoding="utf-8"))
+              except json.JSONDecodeError:
+                  findings_doc = {"summary": "", "findings": []}
           changed_lines = json.loads(changed_lines_path.read_text(encoding="utf-8"))
 
           findings = findings_doc.get("findings") or []
