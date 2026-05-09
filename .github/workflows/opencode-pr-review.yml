@@ -1,6 +1,6 @@
 name: opencode-pr-review
 
-run-name: OpenCode review PR #${{ github.event.pull_request.number }}
+run-name: Automated review PR #${{ github.event.pull_request.number }}
 
 on:
   pull_request:
@@ -53,10 +53,10 @@ jobs:
           permission-issues: write
           permission-pull-requests: write
 
-      - name: Install OpenCode
+      - name: Install review runtime
         run: curl -fsSL https://opencode.ai/install | bash
 
-      - name: Add OpenCode to PATH
+      - name: Add review runtime to PATH
         run: echo "$HOME/.opencode/bin" >> "$GITHUB_PATH"
 
       - name: Prepare PR review context
@@ -154,7 +154,7 @@ jobs:
           (review_dir / "changed-lines.json").write_text(json.dumps(changed_lines, indent=2, sort_keys=True) + "\n", encoding="utf-8")
           PY
 
-      - name: Remove previous OpenCode review comments
+      - name: Remove previous automated review comments
         env:
           GH_TOKEN: ${{ steps.glm5-reviewer-token.outputs.token }}
         run: |
@@ -308,7 +308,7 @@ jobs:
                   {
                       "commit_id": head_sha,
                       "event": "COMMENT",
-                      "body": "OpenCode found material issues. See inline comments.",
+                      "body": "Automated review found material issues. See inline comments.",
                       "comments": [
                           {
                               "body": f"{marker}\n{finding['body']}",
@@ -333,7 +333,7 @@ jobs:
               if existing_summary:
                   request("DELETE", existing_summary["url"])
           else:
-              summary_body_lines = [summary_marker, "OpenCode found no material issues."]
+              summary_body_lines = [summary_marker, "Automated review found no material issues."]
               if skipped:
                   summary_body_lines.append(f"- Findings skipped after validation: {len(skipped)}")
               summary_body = "\n".join(summary_body_lines)
@@ -347,7 +347,7 @@ jobs:
                   )
 
           summary_lines = [
-              "## OpenCode PR Review",
+              "## Automated PR Review",
               f"- Valid inline comments posted: {len(valid)}",
               f"- Findings skipped after validation: {len(skipped)}",
           ]
