@@ -1,0 +1,207 @@
+name: glm5-issue-fix
+
+run-name: Fix issue #${{ github.event.issue.number }}
+
+on:
+  issue_comment:
+    types:
+      - created
+
+permissions:
+  contents: read
+
+concurrency:
+  group: glm5-issue-fix-${{ github.event.issue.number }}
+  cancel-in-progress: true
+
+jobs:
+  fix:
+    if: |
+      github.event.comment.user.type != 'Bot' &&
+      !github.event.issue.pull_request &&
+      startsWith(github.event.comment.body || '', '/fix') &&
+      contains(fromJson('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+      ISSUE_NUMBER: ${{ github.event.issue.number }}
+      DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+      ISSUE_FIX_DIR: .github/automated-issue-fix
+
+    steps:
+      - name: Checkout default branch
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ github.event.repository.default_branch }}
+
+      - name: Create GLM-5 fixer bot token
+        id: glm5-fixer-token
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.GLM5_REVIEWER_APP_CLIENT_ID }}
+          private-key: ${{ secrets.GLM5_REVIEWER_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: research-lab
+          permission-contents: write
+          permission-issues: write
+          permission-pull-requests: write
+
+      - name: Install fix runtime
+        run: curl -fsSL https://opencode.ai/install | bash
+
+      - name: Add fix runtime to PATH
+        run: echo "$HOME/.opencode/bin" >> "$GITHUB_PATH"
+
+      - name: Configure git author and push authentication
+        env:
+          GH_TOKEN: ${{ steps.glm5-fixer-token.outputs.token }}
+        run: |
+          git config --global user.name "opencode-agent[bot]"
+          git config --global user.email "219766164+opencode-agent[bot]@users.noreply.github.com"
+          auth_header="$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)"
+          git config --local http.https://github.com/.extraheader "AUTHORIZATION: basic $auth_header"
+
+      - name: Prepare issue context
+        env:
+          GH_TOKEN: ${{ steps.glm5-fixer-token.outputs.token }}
+          ISSUE_TITLE: ${{ github.event.issue.title }}
+          TRIGGER_COMMENT_BODY: ${{ github.event.comment.body }}
+          TRIGGER_COMMENT_AUTHOR: ${{ github.event.comment.user.login }}
+        run: |
+          mkdir -p "$ISSUE_FIX_DIR"
+          python3 <<'PY'
+          import json
+          import os
+          import pathlib
+          import urllib.request
+
+          repo = os.environ["GITHUB_REPOSITORY"]
+          issue_number = os.environ["ISSUE_NUMBER"]
+          token = os.environ["GH_TOKEN"]
+          fix_dir = pathlib.Path(os.environ["ISSUE_FIX_DIR"])
+
+          def request(url: str):
+              req = urllib.request.Request(url)
+              req.add_header("Authorization", f"Bearer {token}")
+              req.add_header("Accept", "application/vnd.github+json")
+              req.add_header("X-GitHub-Api-Version", "2022-11-28")
+              with urllib.request.urlopen(req) as resp:
+                  return json.loads(resp.read().decode("utf-8"))
+
+          issue = request(f"https://api.github.com/repos/{repo}/issues/{issue_number}")
+
+          comments = []
+          page = 1
+          while True:
+              batch = request(
+                  f"https://api.github.com/repos/{repo}/issues/{issue_number}/comments?per_page=100&page={page}"
+              )
+              if not batch:
+                  break
+              comments.extend(batch)
+              if len(batch) < 100:
+                  break
+              page += 1
+
+          payload = {
+              "number": issue["number"],
+              "title": issue["title"],
+              "body": issue.get("body") or "",
+              "html_url": issue["html_url"],
+              "labels": [label["name"] for label in issue.get("labels", [])],
+              "trigger_comment": {
+                  "author": os.environ["TRIGGER_COMMENT_AUTHOR"],
+                  "body": os.environ["TRIGGER_COMMENT_BODY"],
+              },
+              "comments": [
+                  {
+                      "author": comment["user"]["login"],
+                      "body": comment.get("body") or "",
+                      "created_at": comment["created_at"],
+                  }
+                  for comment in comments
+              ],
+          }
+
+          (fix_dir / "issue.json").write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+          PY
+
+      - name: Create fix branch
+        id: branch
+        env:
+          ISSUE_TITLE: ${{ github.event.issue.title }}
+        run: |
+          slug="$(python3 <<'PY'
+          import os
+          import re
+
+          title = os.environ["ISSUE_TITLE"].lower()
+          slug = re.sub(r"[^a-z0-9]+", "-", title).strip("-")[:40] or "issue"
+          print(slug)
+          PY
+          )"
+          branch="feat/${ISSUE_NUMBER}-${slug}"
+          if git ls-remote --exit-code --heads origin "$branch" >/dev/null 2>&1; then
+              branch="${branch}-${GITHUB_RUN_ID}"
+          fi
+          git checkout -b "$branch"
+          echo "branch=$branch" >> "$GITHUB_OUTPUT"
+
+      - name: Run automated issue fixer
+        env:
+          SIEMENS_LLM_API_KEY: ${{ secrets.SIEMENS_LLM_API_KEY }}
+          OPENCODE_CONFIG_CONTENT: |
+            {
+              "model": "siemens/glm-5",
+              "small_model": "siemens/ministral-3-14b-instruct-2512",
+              "enabled_providers": ["siemens"],
+              "share": "disabled"
+            }
+        run: |
+          opencode run -m siemens/glm-5 "Read the issue context in $ISSUE_FIX_DIR/issue.json.
+
+          Implement a minimal fix for the issue and the explicit instruction in the trigger comment.
+          Inspect and edit the repository as needed.
+          Add or update tests when the issue can be checked automatically.
+
+          Constraints:
+          - Do not push branches.
+          - Do not open pull requests.
+          - Do not comment on GitHub.
+          - Do not merge anything.
+          - Do not modify git configuration.
+          - If the issue is ambiguous or no safe fix is possible, leave the worktree unchanged.
+
+          After finishing, print a short summary only."
+
+      - name: Commit, push, and open PR
+        env:
+          GH_TOKEN: ${{ steps.glm5-fixer-token.outputs.token }}
+          BRANCH_NAME: ${{ steps.branch.outputs.branch }}
+        run: |
+          if [ -z "$(git status --short)" ]; then
+              gh issue comment "$ISSUE_NUMBER" --body "Automated fix run did not produce a safe code change."
+              exit 0
+          fi
+
+          git add .
+          git commit -m "fix(issue): address #$ISSUE_NUMBER" -m "Implement the automated fix requested from issue #$ISSUE_NUMBER." -m "Closes #$ISSUE_NUMBER"
+          git push -u origin "$BRANCH_NAME"
+
+          pr_body="$(cat <<EOF
+          ## Summary
+          - automated GLM-5 issue fix for #$ISSUE_NUMBER
+          - apply a minimal repository change based on the issue and trigger comment
+
+          ## Tests run
+          - Not run automatically
+
+          Closes #$ISSUE_NUMBER
+          EOF
+          )"
+          pr_url="$(gh pr create --base "$DEFAULT_BRANCH" --head "$BRANCH_NAME" --title "fix(issue): address #$ISSUE_NUMBER" --body "$pr_body")"
+          gh issue comment "$ISSUE_NUMBER" --body "Opened PR: $pr_url"
