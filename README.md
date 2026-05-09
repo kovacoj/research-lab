@@ -2,6 +2,8 @@
 
 `research_lab` is an agent-first literature-search laboratory.
 
+Testing PR review: this sentence is here purely to wake up the bots.
+
 The intended interface is an OpenCode agent working inside this repo. You give the agent a topic, your current notes, and the kind of help you need. The agent can then search scholarly indexes plus the open web, rerank results, expand from promising leads, read accessible full text, and leave behind reproducible artifacts in `runs/`.
 
 The Python code in this repo is not the product surface. It is a toolkit the agent can use when it is useful.
