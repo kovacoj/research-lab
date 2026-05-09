@@ -28,7 +28,7 @@ jobs:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
       ISSUE_NUMBER: ${{ github.event.issue.number }}
       DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
-      ISSUE_FIX_DIR: .github/automated-issue-fix
+      ISSUE_FIX_DIR: ${{ runner.temp }}/automated-issue-fix
 
     steps:
       - name: Checkout default branch
@@ -51,19 +51,17 @@ jobs:
           permission-pull-requests: write
 
       - name: Install fix runtime
-        run: curl -fsSL https://opencode.ai/install | bash
+        run: |
+          archive_path="$RUNNER_TEMP/opencode-linux-x64.tar.gz"
+          install_dir="$RUNNER_TEMP/opencode-install"
+          mkdir -p "$HOME/.opencode/bin" "$install_dir"
+          curl -fsSL -o "$archive_path" "https://github.com/anomalyco/opencode/releases/download/v1.14.41/opencode-linux-x64.tar.gz"
+          echo "d27d3c85183a7bd2df4506484a2f508d1897962063b7ccc8466705b493963dc5  $archive_path" | sha256sum -c -
+          tar -xzf "$archive_path" -C "$install_dir"
+          install -m 0755 "$install_dir/opencode" "$HOME/.opencode/bin/opencode"
 
       - name: Add fix runtime to PATH
         run: echo "$HOME/.opencode/bin" >> "$GITHUB_PATH"
-
-      - name: Configure git author and push authentication
-        env:
-          GH_TOKEN: ${{ steps.glm5-fixer-token.outputs.token }}
-        run: |
-          git config --global user.name "opencode-agent[bot]"
-          git config --global user.email "219766164+opencode-agent[bot]@users.noreply.github.com"
-          auth_header="$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)"
-          git config --local http.https://github.com/.extraheader "AUTHORIZATION: basic $auth_header"
 
       - name: Prepare issue context
         env:
@@ -133,6 +131,7 @@ jobs:
       - name: Create fix branch
         id: branch
         env:
+          GH_TOKEN: ${{ steps.glm5-fixer-token.outputs.token }}
           ISSUE_TITLE: ${{ github.event.issue.title }}
         run: |
           slug="$(python3 <<'PY'
@@ -145,7 +144,8 @@ jobs:
           PY
           )"
           branch="feat/${ISSUE_NUMBER}-${slug}"
-          if git ls-remote --exit-code --heads origin "$branch" >/dev/null 2>&1; then
+          existing_ref="$(gh api "repos/$GITHUB_REPOSITORY/git/matching-refs/heads/$branch" --jq '.[0].ref // empty' 2>/dev/null || true)"
+          if [ -n "$existing_ref" ]; then
               branch="${branch}-${GITHUB_RUN_ID}"
           fi
           git checkout -b "$branch"
@@ -177,6 +177,15 @@ jobs:
           - If the issue is ambiguous or no safe fix is possible, leave the worktree unchanged.
 
           After finishing, print a short summary only."
+
+      - name: Configure git author and push authentication
+        env:
+          GH_TOKEN: ${{ steps.glm5-fixer-token.outputs.token }}
+        run: |
+          git config --global user.name "opencode-agent[bot]"
+          git config --global user.email "219766164+opencode-agent[bot]@users.noreply.github.com"
+          auth_header="$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)"
+          git config --local http.https://github.com/.extraheader "AUTHORIZATION: basic $auth_header"
 
       - name: Commit, push, and open PR
         env:
