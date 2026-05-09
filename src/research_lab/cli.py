@@ -98,7 +98,7 @@ def brief_command(args: argparse.Namespace) -> None:
         raise SystemExit(f"missing file: {input_path}")
     brief = load_brief_markdown(input_path)
     output_path = Path(args.output)
-    write_brief_json(output_path, brief)
+    write_brief_json(input_path, brief)
     print(f"input: {input_path}")
     print(f"output: {output_path}")
     print(f"topic: {brief.topic}")
