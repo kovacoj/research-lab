@@ -10,7 +10,6 @@ on:
 
 permissions:
   contents: read
-  id-token: write
   pull-requests: write
 
 concurrency:
@@ -21,9 +20,15 @@ jobs:
   review:
     if: ${{ !github.event.pull_request.draft && github.event.pull_request.head.repo.full_name == github.repository }}
     runs-on: ubuntu-latest
+    timeout-minutes: 20
 
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+      PR_NUMBER: ${{ github.event.pull_request.number }}
+      BASE_SHA: ${{ github.event.pull_request.base.sha }}
+      HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+      REVIEW_DIR: .github/opencode-pr-review
+      REVIEW_MARKER: <!-- opencode-pr-review -->
 
     steps:
       - name: Checkout repository
@@ -33,11 +38,146 @@ jobs:
           persist-credentials: false
           ref: ${{ github.event.pull_request.head.sha }}
 
-      - name: Run OpenCode PR review
-        uses: anomalyco/opencode/github@v1.14.41
+      - name: Install OpenCode
+        run: curl -fsSL https://opencode.ai/install | bash
+
+      - name: Add OpenCode to PATH
+        run: echo "$HOME/.opencode/bin" >> "$GITHUB_PATH"
+
+      - name: Prepare PR review context
         env:
-          GITHUB_TOKEN: ${{ github.token }}
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p "$REVIEW_DIR"
+          python3 <<'PY'
+          import json
+          import os
+          import pathlib
+          import re
+          import subprocess
+
+          review_dir = pathlib.Path(os.environ["REVIEW_DIR"])
+          pr_number = os.environ["PR_NUMBER"]
+          repo = os.environ["GITHUB_REPOSITORY"]
+
+          def gh_json(endpoint: str):
+              return json.loads(subprocess.check_output(["gh", "api", endpoint], text=True))
+
+          def gh_paginated(endpoint: str):
+              page = 1
+              items = []
+              while True:
+                  separator = "&" if "?" in endpoint else "?"
+                  batch = gh_json(f"{endpoint}{separator}per_page=100&page={page}")
+                  if not batch:
+                      break
+                  items.extend(batch)
+                  if len(batch) < 100:
+                      break
+                  page += 1
+              return items
+
+          hunk_re = re.compile(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@")
+
+          def changed_lines_from_patch(patch: str):
+              if not patch:
+                  return []
+              changed = []
+              new_line = None
+              for line in patch.splitlines():
+                  match = hunk_re.match(line)
+                  if match:
+                      new_line = int(match.group(1))
+                      continue
+                  if new_line is None:
+                      continue
+                  if line.startswith("+") and not line.startswith("+++"):
+                      changed.append(new_line)
+                      new_line += 1
+                  elif line.startswith("-") and not line.startswith("---"):
+                      continue
+                  elif line.startswith("\\"):
+                      continue
+                  else:
+                      new_line += 1
+              return changed
+
+          pr = gh_json(f"repos/{repo}/pulls/{pr_number}")
+          files = gh_paginated(f"repos/{repo}/pulls/{pr_number}/files")
+
+          metadata = {
+              "number": pr["number"],
+              "title": pr["title"],
+              "body": pr.get("body") or "",
+              "base_ref": pr["base"]["ref"],
+              "base_sha": pr["base"]["sha"],
+              "head_ref": pr["head"]["ref"],
+              "head_sha": pr["head"]["sha"],
+              "html_url": pr["html_url"],
+          }
+
+          simplified_files = []
+          changed_lines = {}
+          for file in files:
+              path = file["filename"]
+              patch = file.get("patch") or ""
+              lines = changed_lines_from_patch(patch)
+              simplified_files.append(
+                  {
+                      "path": path,
+                      "status": file["status"],
+                      "additions": file["additions"],
+                      "deletions": file["deletions"],
+                      "previous_filename": file.get("previous_filename"),
+                      "patch": patch,
+                  }
+              )
+              changed_lines[path] = lines
+
+          (review_dir / "pr.json").write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
+          (review_dir / "files.json").write_text(json.dumps(simplified_files, indent=2) + "\n", encoding="utf-8")
+          (review_dir / "changed-lines.json").write_text(json.dumps(changed_lines, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+          PY
+
+      - name: Remove previous OpenCode review comments
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python3 <<'PY'
+          import json
+          import os
+          import urllib.request
+
+          repo = os.environ["GITHUB_REPOSITORY"]
+          pr_number = os.environ["PR_NUMBER"]
+          token = os.environ["GH_TOKEN"]
+          marker = os.environ["REVIEW_MARKER"]
+
+          def request(method: str, url: str):
+              req = urllib.request.Request(url, method=method)
+              req.add_header("Authorization", f"Bearer {token}")
+              req.add_header("Accept", "application/vnd.github+json")
+              req.add_header("X-GitHub-Api-Version", "2022-11-28")
+              with urllib.request.urlopen(req) as resp:
+                  body = resp.read().decode("utf-8")
+              return json.loads(body) if body else None
+
+          page = 1
+          while True:
+              url = f"https://api.github.com/repos/{repo}/pulls/{pr_number}/comments?per_page=100&page={page}"
+              comments = request("GET", url)
+              if not comments:
+                  break
+              for comment in comments:
+                  if marker in (comment.get("body") or ""):
+                      request("DELETE", comment["url"])
+              if len(comments) < 100:
+                  break
+              page += 1
+          PY
+
+      - name: Generate structured review findings
+        env:
           SIEMENS_LLM_API_KEY: ${{ secrets.SIEMENS_LLM_API_KEY }}
           OPENCODE_CONFIG_CONTENT: |
             {
@@ -46,21 +186,124 @@ jobs:
               "enabled_providers": ["siemens"],
               "share": "disabled"
             }
-        with:
-          model: siemens/glm-5
-          share: false
-          prompt: |
-            Review pull request #${{ github.event.pull_request.number }} (`${{ github.event.pull_request.title }}`) from `${{ github.event.pull_request.base.sha }}` to `${{ github.event.pull_request.head.sha }}`.
+        run: |
+          opencode run -m siemens/glm-5 "Review pull request #$PR_NUMBER from $BASE_SHA to $HEAD_SHA.
 
-            Scope:
-            - Review only the pull request diff for correctness bugs, regressions, security issues, broken behavior, maintainability hazards, and missing tests that could hide a defect.
-            - Ignore minor formatting or style-only nits.
-            - Do not modify code, do not create commits, do not push branches, and do not open issues or pull requests.
-            - Do not install dependencies, run tests, or execute code from this pull request.
+          Read these files first:
+          - $REVIEW_DIR/pr.json
+          - $REVIEW_DIR/files.json
+          - $REVIEW_DIR/changed-lines.json
 
-            Outcome:
-            - If you find no material problem, finish without leaving feedback.
-            - If you find a material problem, leave exactly one top-level review on this pull request for the current head SHA.
-            - Keep feedback to high-confidence findings only.
-            - Include file paths, the problem, why it matters, and a suggested fix.
-            - Prefer a concise findings-first review over inline nitpicks.
+          Then inspect any changed source files you need in the working tree.
+
+          Focus only on high-confidence correctness bugs, regressions, security issues, broken behavior, maintainability hazards, and missing tests that could hide a defect.
+          Ignore style-only feedback.
+
+          Write exactly one JSON file to $REVIEW_DIR/findings.json with this schema:
+          {
+            \"summary\": \"short summary or empty string\",
+            \"findings\": [
+              {
+                \"path\": \"relative/path.ext\",
+                \"line\": 123,
+                \"body\": \"Problem: ...\\nWhy it matters: ...\\nSuggested fix: ...\"
+              }
+            ]
+          }
+
+          Rules:
+          - Produce at most 5 findings.
+          - path must match a changed file from files.json.
+          - line must be a right-side changed line from changed-lines.json.
+          - body must be concise and specific.
+          - Do not wrap the JSON file in Markdown fences.
+          - Do not modify source code.
+          - Do not create commits, comments, issues, pull requests, or extra files.
+          - If there are no material findings, write {\"summary\":\"\",\"findings\":[]}.
+
+          After writing the file, print a one-line confirmation only."
+
+      - name: Publish inline review comments
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python3 <<'PY'
+          import json
+          import os
+          import pathlib
+          import urllib.request
+
+          repo = os.environ["GITHUB_REPOSITORY"]
+          pr_number = os.environ["PR_NUMBER"]
+          head_sha = os.environ["HEAD_SHA"]
+          token = os.environ["GH_TOKEN"]
+          marker = os.environ["REVIEW_MARKER"]
+          review_dir = pathlib.Path(os.environ["REVIEW_DIR"])
+          findings_path = review_dir / "findings.json"
+          changed_lines_path = review_dir / "changed-lines.json"
+          summary_path = pathlib.Path(os.environ["GITHUB_STEP_SUMMARY"])
+
+          findings_doc = json.loads(findings_path.read_text(encoding="utf-8"))
+          changed_lines = json.loads(changed_lines_path.read_text(encoding="utf-8"))
+
+          findings = findings_doc.get("findings") or []
+          valid = []
+          skipped = []
+
+          for finding in findings:
+              path = finding.get("path")
+              line = finding.get("line")
+              body = finding.get("body")
+              if not isinstance(path, str) or not isinstance(line, int) or not isinstance(body, str):
+                  skipped.append({"finding": finding, "reason": "invalid schema"})
+                  continue
+              if path not in changed_lines:
+                  skipped.append({"finding": finding, "reason": "path not in changed files"})
+                  continue
+              if line not in changed_lines[path]:
+                  skipped.append({"finding": finding, "reason": "line not in changed right-side lines"})
+                  continue
+              valid.append({"path": path, "line": line, "body": body.strip()})
+
+          def request(method: str, url: str, payload=None):
+              data = None
+              if payload is not None:
+                  data = json.dumps(payload).encode("utf-8")
+              req = urllib.request.Request(url, data=data, method=method)
+              req.add_header("Authorization", f"Bearer {token}")
+              req.add_header("Accept", "application/vnd.github+json")
+              req.add_header("X-GitHub-Api-Version", "2022-11-28")
+              if data is not None:
+                  req.add_header("Content-Type", "application/json")
+              with urllib.request.urlopen(req) as resp:
+                  body = resp.read().decode("utf-8")
+              return json.loads(body) if body else None
+
+          for finding in valid:
+              request(
+                  "POST",
+                  f"https://api.github.com/repos/{repo}/pulls/{pr_number}/comments",
+                  {
+                      "body": f"{marker}\n{finding['body']}",
+                      "commit_id": head_sha,
+                      "path": finding["path"],
+                      "line": finding["line"],
+                      "side": "RIGHT",
+                  },
+              )
+
+          summary_lines = [
+              "## OpenCode PR Review",
+              f"- Valid inline comments posted: {len(valid)}",
+              f"- Findings skipped after validation: {len(skipped)}",
+          ]
+          if skipped:
+              summary_lines.append("")
+              summary_lines.append("### Skipped Findings")
+              for item in skipped:
+                  finding = item["finding"]
+                  summary_lines.append(
+                      f"- {finding.get('path', '?')}:{finding.get('line', '?')} ({item['reason']})"
+                  )
+          summary_path.write_text("\n".join(summary_lines) + "\n", encoding="utf-8")
+          PY
