@@ -1,5 +1,7 @@
 name: opencode-pr-review
 
+run-name: OpenCode review PR #${{ github.event.pull_request.number }}
+
 on:
   pull_request:
     types:
@@ -29,6 +31,7 @@ jobs:
       HEAD_SHA: ${{ github.event.pull_request.head.sha }}
       REVIEW_DIR: .github/opencode-pr-review
       REVIEW_MARKER: <!-- opencode-pr-review -->
+      REVIEW_SUMMARY_MARKER: <!-- opencode-pr-review-summary -->
 
     steps:
       - name: Checkout repository
@@ -238,10 +241,14 @@ jobs:
           head_sha = os.environ["HEAD_SHA"]
           token = os.environ["GH_TOKEN"]
           marker = os.environ["REVIEW_MARKER"]
+          summary_marker = os.environ["REVIEW_SUMMARY_MARKER"]
           review_dir = pathlib.Path(os.environ["REVIEW_DIR"])
           findings_path = review_dir / "findings.json"
           changed_lines_path = review_dir / "changed-lines.json"
           summary_path = pathlib.Path(os.environ["GITHUB_STEP_SUMMARY"])
+          run_url = (
+              f"{os.environ['GITHUB_SERVER_URL']}/{repo}/actions/runs/{os.environ['GITHUB_RUN_ID']}"
+          )
 
           findings_doc = json.loads(findings_path.read_text(encoding="utf-8"))
           changed_lines = json.loads(changed_lines_path.read_text(encoding="utf-8"))
@@ -290,6 +297,33 @@ jobs:
                       "line": finding["line"],
                       "side": "RIGHT",
                   },
+              )
+
+          summary_body_lines = [summary_marker, "OpenCode PR review completed."]
+          if valid:
+              summary_body_lines.append(f"- Inline comments posted: {len(valid)}")
+          else:
+              summary_body_lines.append("- No material findings were posted as inline comments.")
+          if skipped:
+              summary_body_lines.append(f"- Findings skipped after validation: {len(skipped)}")
+          summary_body_lines.append(f"- [Workflow run]({run_url})")
+          summary_body = "\n".join(summary_body_lines)
+
+          comments = request(
+              "GET",
+              f"https://api.github.com/repos/{repo}/issues/{pr_number}/comments?per_page=100",
+          )
+          existing_summary = next(
+              (comment for comment in comments if summary_marker in (comment.get("body") or "")),
+              None,
+          )
+          if existing_summary:
+              request("PATCH", existing_summary["url"], {"body": summary_body})
+          else:
+              request(
+                  "POST",
+                  f"https://api.github.com/repos/{repo}/issues/{pr_number}/comments",
+                  {"body": summary_body},
               )
 
           summary_lines = [
