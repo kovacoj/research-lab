@@ -225,5 +225,5 @@ If you run OpenCode inside this repo, there are prompt files under `.opencode/ag
 ## Issues
 
 <!-- issues:start -->
-_No open issues._
+- [#51](https://github.com/kovacoj/research-lab/issues/51) auto PR reviewer
 <!-- issues:end -->
