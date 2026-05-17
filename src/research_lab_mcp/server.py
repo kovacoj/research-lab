@@ -258,16 +258,20 @@ class ResearchLabMcpServer:
 def run_stdio_server(server: ResearchLabMcpServer) -> None:
     reader = sys.stdin.buffer
     writer = sys.stdout.buffer
+    mode: str | None = None
     while True:
-        message = _read_message(reader)
-        if message is None:
+        result = _read_message(reader)
+        if result is None:
             return
+        message, observed_mode = result
+        if mode is None:
+            mode = observed_mode
 
         request_id = message.get("id")
         method = message.get("method")
         if not method:
             if request_id is not None:
-                _write_message(writer, _jsonrpc_error(request_id, -32600, "missing method"))
+                _write_message(writer, _jsonrpc_error(request_id, -32600, "missing method"), mode)
             continue
 
         if request_id is None:
@@ -278,13 +282,13 @@ def run_stdio_server(server: ResearchLabMcpServer) -> None:
         try:
             result = server.handle_request(method, message.get("params"))
         except ValueError as exc:
-            _write_message(writer, _jsonrpc_error(request_id, -32602, str(exc)))
+            _write_message(writer, _jsonrpc_error(request_id, -32602, str(exc)), mode)
             continue
         except Exception as exc:  # pragma: no cover - defensive wrapper for MCP clients
-            _write_message(writer, _jsonrpc_error(request_id, -32000, str(exc)))
+            _write_message(writer, _jsonrpc_error(request_id, -32000, str(exc)), mode)
             continue
 
-        _write_message(writer, {"jsonrpc": "2.0", "id": request_id, "result": result})
+        _write_message(writer, {"jsonrpc": "2.0", "id": request_id, "result": result}, mode)
 
 
 def _tool_definitions() -> list[dict]:
@@ -495,26 +499,42 @@ def _ensure_within(path: Path, base: Path, label: str) -> None:
         raise ValueError(f"path must stay inside the {label}") from exc
 
 
-def _read_message(reader) -> dict | None:
-    headers: dict[str, str] = {}
-    while True:
-        line = reader.readline()
-        if not line:
-            return None
-        if line in {b"\r\n", b"\n"}:
-            break
-        name, _, value = line.decode("ascii").partition(":")
-        headers[name.strip().lower()] = value.strip()
+def _read_message(reader) -> tuple[dict, str] | None:
+    line = reader.readline()
+    if not line:
+        return None
 
-    content_length = int(headers.get("content-length", "0"))
-    if content_length <= 0:
-        raise ValueError("missing content-length header")
-    body = reader.read(content_length)
-    return json.loads(body.decode("utf-8"))
+    stripped = line.strip()
+    if not stripped:
+        return _read_message(reader)
+
+    if line.lower().startswith(b"content-length:"):
+        headers: dict[str, str] = {}
+        current = line
+        while True:
+            name, _, value = current.decode("ascii").partition(":")
+            headers[name.strip().lower()] = value.strip()
+            current = reader.readline()
+            if not current:
+                raise ValueError("unexpected EOF while reading MCP headers")
+            if current in {b"\r\n", b"\n"}:
+                break
+
+        content_length = int(headers.get("content-length", "0"))
+        if content_length <= 0:
+            raise ValueError("missing content-length header")
+        body = reader.read(content_length)
+        return json.loads(body.decode("utf-8")), "content-length"
+
+    return json.loads(stripped.decode("utf-8")), "ndjson"
 
 
-def _write_message(writer, payload: dict) -> None:
+def _write_message(writer, payload: dict, mode: str | None) -> None:
     body = json.dumps(payload, ensure_ascii=True, separators=(",", ":")).encode("utf-8")
+    if mode == "ndjson":
+        writer.write(body + b"\n")
+        writer.flush()
+        return
     writer.write(f"Content-Length: {len(body)}\r\n\r\n".encode("ascii"))
     writer.write(body)
     writer.flush()

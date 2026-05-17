@@ -1,3 +1,4 @@
+import io
 from pathlib import Path
 import sys
 import tempfile
@@ -8,7 +9,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from research_lab.briefs import load_brief_markdown
 from research_lab.models import PaperCandidate, ResearchBrief, RunArtifacts
-from research_lab_mcp.server import ResearchLabMcpServer
+from research_lab_mcp.server import ResearchLabMcpServer, _read_message, _write_message
 
 
 class _FakeUtcNow:
@@ -23,6 +24,25 @@ class _FakeDateTime:
 
 
 class McpServerTests(unittest.TestCase):
+    def test_read_message_supports_ndjson(self) -> None:
+        payload = b'{"jsonrpc":"2.0","id":1,"method":"ping"}\n'
+        message = _read_message(io.BytesIO(payload))
+
+        self.assertEqual(message, ({"jsonrpc": "2.0", "id": 1, "method": "ping"}, "ndjson"))
+
+    def test_write_message_supports_ndjson(self) -> None:
+        buffer = io.BytesIO()
+        _write_message(buffer, {"jsonrpc": "2.0", "id": 1, "result": {}}, "ndjson")
+
+        self.assertEqual(buffer.getvalue(), b'{"jsonrpc":"2.0","id":1,"result":{}}\n')
+
+    def test_read_message_supports_content_length_protocol(self) -> None:
+        body = b'{"jsonrpc":"2.0","id":1,"method":"ping"}'
+        payload = f"Content-Length: {len(body)}\r\n\r\n".encode("ascii") + body
+        message = _read_message(io.BytesIO(payload))
+
+        self.assertEqual(message, ({"jsonrpc": "2.0", "id": 1, "method": "ping"}, "content-length"))
+
     def test_run_search_writes_under_workspace_research_runs_by_default(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             workspace = Path(tmpdir)
