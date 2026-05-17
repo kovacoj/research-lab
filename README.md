@@ -53,6 +53,81 @@ The agent may choose to use the Python tools in this repo, or it may work more d
 
 The Python CLI remains available as optional tooling for the agent or for you directly.
 
+## Local MCP Server
+
+The repo now also exposes a local MCP server entrypoint:
+
+```bash
+uv run --project /home/cady/personal/research_lab \
+  research-lab-mcp \
+  --workspace /home/cady/projects/dp
+```
+
+The intended architecture is:
+
+- `research-lab` stays the reusable Python research engine.
+- your caller project keeps its own notes, thesis text, code, and generated artifacts.
+- the MCP layer stays thin and writes run outputs under the caller workspace.
+
+### OpenCode config example
+
+From another project, configure OpenCode like this:
+
+```jsonc
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "research-lab": {
+      "type": "local",
+      "command": [
+        "uv",
+        "run",
+        "--project",
+        "/home/cady/personal/research_lab",
+        "research-lab-mcp",
+        "--workspace",
+        "/home/cady/projects/dp"
+      ],
+      "enabled": true,
+      "environment": {
+        "OPENALEX_EMAIL": "{env:OPENALEX_EMAIL}",
+        "SEMANTIC_SCHOLAR_API_KEY": "{env:SEMANTIC_SCHOLAR_API_KEY}",
+        "RESEARCH_LAB_LLM_MODEL": "{env:RESEARCH_LAB_LLM_MODEL}",
+        "RESEARCH_LAB_LLM_BASE_URL": "{env:RESEARCH_LAB_LLM_BASE_URL}",
+        "RESEARCH_LAB_LLM_API_KEY": "{env:RESEARCH_LAB_LLM_API_KEY}"
+      }
+    }
+  }
+}
+```
+
+### Exposed MCP tools
+
+- `research_lab_run_search`
+- `research_lab_run_from_brief`
+- `research_lab_create_brief`
+- `research_lab_list_runs`
+- `research_lab_read_report`
+- `research_lab_review_run`
+
+Typical flow from another project:
+
+1. Your agent reads local PDFs, notes, or thesis files in that project.
+2. The agent extracts only the relevant context.
+3. The agent calls `research_lab_create_brief` or `research_lab_run_search`.
+4. The agent calls `research_lab_read_report` to inspect the generated report.
+5. If needed, the agent calls `research_lab_review_run` to compare runs.
+
+This keeps document access in your project-local agent while `research-lab` stays focused on search, ranking, artifact generation, and run review.
+
+### Workspace guardrails
+
+- `--workspace` sets the caller project root.
+- run outputs default to `<workspace>/research/runs`.
+- MCP-managed output paths must stay inside `<workspace>/research/`.
+- workspace reads such as `brief_path` must stay inside `<workspace>/`.
+- the server does not expose arbitrary shell execution.
+
 ## Quick start
 
 ```bash

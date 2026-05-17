@@ -1,2 +1,3 @@
 [console_scripts]
 research-lab = research_lab.cli:main
+research-lab-mcp = research_lab_mcp.server:main
