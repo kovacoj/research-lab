@@ -300,7 +300,6 @@ If you run OpenCode inside this repo, there are prompt files under `.opencode/ag
 ## Issues
 
 <!-- issues:start -->
-- [#66](https://github.com/kovacoj/research-lab/issues/66) Add local MCP server interface for research-lab
 - [#64](https://github.com/kovacoj/research-lab/issues/64) bots
 - [#51](https://github.com/kovacoj/research-lab/issues/51) auto PR reviewer
 <!-- issues:end -->
