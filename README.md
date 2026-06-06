@@ -300,6 +300,7 @@ If you run OpenCode inside this repo, there are prompt files under `.opencode/ag
 ## Issues
 
 <!-- issues:start -->
+- [#71](https://github.com/kovacoj/research-lab/issues/71) Explore Lean verification layer for thesis proof components
 - [#64](https://github.com/kovacoj/research-lab/issues/64) bots
 - [#51](https://github.com/kovacoj/research-lab/issues/51) auto PR reviewer
 <!-- issues:end -->
