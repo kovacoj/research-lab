@@ -33,7 +33,7 @@ jobs:
           ref: ${{ inputs.after_sha }}
 
       - name: Run OpenCode review
-        uses: anomalyco/opencode/github@v1.15.6
+        uses: anomalyco/opencode/github@v1.17.8
         env:
           SIEMENS_LLM_API_KEY: ${{ secrets.SIEMENS_LLM_API_KEY }}
           OPENCODE_CONFIG_CONTENT: |
